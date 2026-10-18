@@ -12,3 +12,8 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+docs/**
+AGENTS.md
+# Ship only the built webview assets, not the webview sources.
+webview-ui/**
+!webview-ui/dist/**

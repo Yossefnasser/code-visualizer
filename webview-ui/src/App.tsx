@@ -1,101 +1,90 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ReactFlow,
-  applyNodeChanges,
-  applyEdgeChanges,
   addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
   type Edge,
-  type Node,
-  type NodeProps,
   type OnConnect,
   type OnEdgesChange,
   type OnNodesChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
 import {
-  DatabaseSchemaNode,
-  DatabaseSchemaNodeHeader,
-  DatabaseSchemaNodeBody,
-  DatabaseSchemaTableRow,
-  DatabaseSchemaTableCell,
-} from '@/components/database-schema-node';
+  DatabaseModelNode,
+  type DatabaseModelFlowNode,
+} from '@/components/nodes/database-model-node';
+import { EndpointNode, type EndpointFlowNode } from '@/components/nodes/endpoint-node';
+import { ServiceNode, type ServiceFlowNode } from '@/components/nodes/service-node';
+import { DetailsPanel } from '@/components/panels/details-panel';
+import { MOCK_DATA_NOTE, MOCK_GRAPH } from '@/fixtures/mock-architecture';
+import type { ArchitectureGraph } from '@/types/architecture';
 
-type SchemaColumn = {
-  name: string;
-  type: string;
-};
-
-export type SchemaTableData = {
-  name: string;
-  columns: SchemaColumn[];
-};
-
-type SchemaTableNodeType = Node<SchemaTableData, 'schemaTable'>;
-
-function SchemaTableNode({ data }: NodeProps<SchemaTableNodeType>) {
-  return (
-    <DatabaseSchemaNode className="w-56">
-      <DatabaseSchemaNodeHeader>{data.name}</DatabaseSchemaNodeHeader>
-      <DatabaseSchemaNodeBody>
-        {data.columns.map((column) => (
-          <DatabaseSchemaTableRow key={column.name}>
-            <DatabaseSchemaTableCell>{column.name}</DatabaseSchemaTableCell>
-            <DatabaseSchemaTableCell className="text-right text-muted-foreground">
-              {column.type}
-            </DatabaseSchemaTableCell>
-          </DatabaseSchemaTableRow>
-        ))}
-      </DatabaseSchemaNodeBody>
-    </DatabaseSchemaNode>
-  );
-}
+type FlowNode = EndpointFlowNode | ServiceFlowNode | DatabaseModelFlowNode;
 
 const nodeTypes = {
-  schemaTable: SchemaTableNode,
+  endpoint: EndpointNode,
+  service: ServiceNode,
+  database_model: DatabaseModelNode,
 };
 
-const initialNodes: SchemaTableNodeType[] = [
-  {
-    id: 'n1',
-    type: 'schemaTable',
-    position: { x: 0, y: 0 },
-    data: {
-      name: 'users',
-      columns: [
-        { name: 'id', type: 'int' },
-        { name: 'email', type: 'text' },
-        { name: 'created_at', type: 'timestamp' },
-      ],
-    },
-  },
-  {
-    id: 'n2',
-    type: 'schemaTable',
-    position: { x: 300, y: 150 },
-    data: {
-      name: 'orders',
-      columns: [
-        { name: 'id', type: 'int' },
-        { name: 'user_id', type: 'int' },
-        { name: 'total', type: 'numeric' },
-      ],
-    },
-  },
-];
-const initialEdges: Edge[] = [{ id: 'n1-n2', source: 'n1', target: 'n2' }];
+// Simple deterministic column layout: endpoints, then services, then database
+// models. Real layout logic arrives with later milestones.
+const COLUMN_BY_NODE_TYPE: Record<string, number> = {
+  endpoint: 0,
+  service: 1,
+  database_model: 2,
+};
+
+function buildFlowNodes(graph: ArchitectureGraph): FlowNode[] {
+  const rowByType: Record<string, number> = {};
+  const flowNodes: FlowNode[] = [];
+
+  for (const node of graph.nodes) {
+    const column = COLUMN_BY_NODE_TYPE[node.type];
+    if (column === undefined) {
+      // Unknown node types are skipped until dedicated renderers exist.
+      continue;
+    }
+    const row = rowByType[node.type] ?? 0;
+    rowByType[node.type] = row + 1;
+    flowNodes.push({
+      id: node.id,
+      type: node.type,
+      position: { x: column * 300, y: row * 180 },
+      data: { node },
+    } as FlowNode);
+  }
+
+  return flowNodes;
+}
+
+function buildFlowEdges(graph: ArchitectureGraph): Edge[] {
+  return graph.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    label: `${edge.type} (${edge.status})`,
+  }));
+}
 
 export default function App() {
-  const [nodes, setNodes] = useState<SchemaTableNodeType[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
+  const [nodes, setNodes] = useState<FlowNode[]>(() => buildFlowNodes(MOCK_GRAPH));
+  const [edges, setEdges] = useState<Edge[]>(() => buildFlowEdges(MOCK_GRAPH));
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  const onNodesChange: OnNodesChange<SchemaTableNodeType> = useCallback(
-    (changes) =>
-      setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
+  const selectedNode = useMemo(
+    () => MOCK_GRAPH.nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [selectedNodeId],
+  );
+
+  const onNodesChange: OnNodesChange<FlowNode> = useCallback(
+    (changes) => setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
     [],
   );
   const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) =>
-      setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)),
+    (changes) => setEdges((edgesSnapshot) => applyEdgeChanges(changes, edgesSnapshot)),
     [],
   );
   const onConnect: OnConnect = useCallback(
@@ -104,16 +93,26 @@ export default function App() {
   );
 
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        fitView
-      />
+    <div className="flex h-dvh w-full">
+      <div className="relative flex-1">
+        {/* Clearly labels the rendered graph as fixture/mock data. */}
+        <div className="pointer-events-none absolute left-2 top-2 z-10 rounded-md border border-amber-500 bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900 shadow-sm">
+          {MOCK_DATA_NOTE}
+        </div>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
+          onPaneClick={() => setSelectedNodeId(null)}
+          fitView
+        />
+      </div>
+      <DetailsPanel node={selectedNode} />
     </div>
   );
 }
+

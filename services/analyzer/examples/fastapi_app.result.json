@@ -1,0 +1,609 @@
+{
+  "schemaVersion": "1.0",
+  "project": {
+    "root": "services/analyzer/tests/fixtures/fastapi_app",
+    "language": "python"
+  },
+  "nodes": [
+    {
+      "id": "database_field:app.models.user:Post.author_id",
+      "type": "database_field",
+      "label": "author_id",
+      "details": {
+        "model": "database_model:app.models.user:Post",
+        "kind": "foreign_key",
+        "type": "int",
+        "targetHint": "users.id"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 20
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_column",
+          "description": "SQLAlchemy column or relationship declaration",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "database_field:app.models.user:Post.id",
+      "type": "database_field",
+      "label": "id",
+      "details": {
+        "model": "database_model:app.models.user:Post",
+        "kind": "column",
+        "type": "int"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 18
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_column",
+          "description": "SQLAlchemy column or relationship declaration",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "database_field:app.models.user:Post.title",
+      "type": "database_field",
+      "label": "title",
+      "details": {
+        "model": "database_model:app.models.user:Post",
+        "kind": "column",
+        "type": "str"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 19
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_column",
+          "description": "SQLAlchemy column or relationship declaration",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "database_field:app.models.user:User.email",
+      "type": "database_field",
+      "label": "email",
+      "details": {
+        "model": "database_model:app.models.user:User",
+        "kind": "column",
+        "type": "str"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 11
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_column",
+          "description": "SQLAlchemy column or relationship declaration",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": "database_field:app.models.user:User.id",
+      "type": "database_field",
+      "label": "id",
+      "details": {
+        "model": "database_model:app.models.user:User",
+        "kind": "column",
+        "type": "int"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 10
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_column",
+          "description": "SQLAlchemy column or relationship declaration",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "database_field:app.models.user:User.posts",
+      "type": "database_field",
+      "label": "posts",
+      "details": {
+        "model": "database_model:app.models.user:User",
+        "kind": "relationship",
+        "targetHint": "Post"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 12
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_column",
+          "description": "SQLAlchemy column or relationship declaration",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "database_model:app.models.user:Post",
+      "type": "database_model",
+      "label": "Post",
+      "details": {
+        "framework": "sqlalchemy",
+        "table": "posts"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 15,
+        "endLine": 20
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_declarative_class",
+          "description": "Class inherits from a SQLAlchemy declarative base",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "database_model:app.models.user:User",
+      "type": "database_model",
+      "label": "User",
+      "details": {
+        "framework": "sqlalchemy",
+        "table": "users"
+      },
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 7,
+        "endLine": 12
+      },
+      "evidence": [
+        {
+          "kind": "sqlalchemy_declarative_class",
+          "description": "Class inherits from a SQLAlchemy declarative base",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "endpoint:app.api.users:GET:/users",
+      "type": "endpoint",
+      "label": "GET /users",
+      "details": {
+        "framework": "fastapi",
+        "method": "GET",
+        "methods": [
+          "GET"
+        ],
+        "path": "/users",
+        "handler": "list_users_endpoint"
+      },
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 9,
+        "endLine": 10
+      },
+      "evidence": [
+        {
+          "kind": "fastapi_route_decorator",
+          "description": "FastAPI route decorator discovered by static analysis",
+          "source": {
+            "path": "app/api/users.py",
+            "startLine": 8
+          },
+          "metadata": {
+            "decorator": "router.get"
+          }
+        }
+      ]
+    },
+    {
+      "id": "endpoint:app.api.users:GET:/users/{user_id}",
+      "type": "endpoint",
+      "label": "GET /users/{user_id}",
+      "details": {
+        "framework": "fastapi",
+        "method": "GET",
+        "methods": [
+          "GET"
+        ],
+        "path": "/users/{user_id}",
+        "handler": "get_user_endpoint"
+      },
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 14,
+        "endLine": 15
+      },
+      "evidence": [
+        {
+          "kind": "fastapi_route_decorator",
+          "description": "FastAPI route decorator discovered by static analysis",
+          "source": {
+            "path": "app/api/users.py",
+            "startLine": 13
+          },
+          "metadata": {
+            "decorator": "router.get"
+          }
+        }
+      ]
+    },
+    {
+      "id": "function:app.api.users:get_user_endpoint",
+      "type": "function",
+      "label": "get_user_endpoint",
+      "details": {
+        "name": "get_user_endpoint"
+      },
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 14,
+        "endLine": 15
+      },
+      "evidence": [
+        {
+          "kind": "python_definition",
+          "description": "Function declaration found by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "function:app.api.users:list_users_endpoint",
+      "type": "function",
+      "label": "list_users_endpoint",
+      "details": {
+        "name": "list_users_endpoint"
+      },
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 9,
+        "endLine": 10
+      },
+      "evidence": [
+        {
+          "kind": "python_definition",
+          "description": "Function declaration found by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app",
+      "type": "module",
+      "label": "app",
+      "source": {
+        "path": "app/__init__.py",
+        "startLine": 1,
+        "endLine": 1
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app.api",
+      "type": "module",
+      "label": "app.api",
+      "source": {
+        "path": "app/api/__init__.py",
+        "startLine": 1,
+        "endLine": 1
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app.api.users",
+      "type": "module",
+      "label": "app.api.users",
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 1,
+        "endLine": 15
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app.main",
+      "type": "module",
+      "label": "app.main",
+      "source": {
+        "path": "app/main.py",
+        "startLine": 1,
+        "endLine": 3
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app.models",
+      "type": "module",
+      "label": "app.models",
+      "source": {
+        "path": "app/models/__init__.py",
+        "startLine": 1,
+        "endLine": 1
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app.models.user",
+      "type": "module",
+      "label": "app.models.user",
+      "source": {
+        "path": "app/models/user.py",
+        "startLine": 1,
+        "endLine": 20
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app.services",
+      "type": "module",
+      "label": "app.services",
+      "source": {
+        "path": "app/services/__init__.py",
+        "startLine": 1,
+        "endLine": 1
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "module:app.services.user_service",
+      "type": "module",
+      "label": "app.services.user_service",
+      "source": {
+        "path": "app/services/user_service.py",
+        "startLine": 1,
+        "endLine": 9
+      },
+      "evidence": [
+        {
+          "kind": "python_module",
+          "description": "Python source file discovered by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "service:app.services.user_service:get_user",
+      "type": "service",
+      "label": "get_user",
+      "details": {
+        "name": "get_user"
+      },
+      "source": {
+        "path": "app/services/user_service.py",
+        "startLine": 8,
+        "endLine": 9
+      },
+      "evidence": [
+        {
+          "kind": "python_definition",
+          "description": "Function declaration found by static analysis"
+        }
+      ]
+    },
+    {
+      "id": "service:app.services.user_service:list_users",
+      "type": "service",
+      "label": "list_users",
+      "details": {
+        "name": "list_users"
+      },
+      "source": {
+        "path": "app/services/user_service.py",
+        "startLine": 4,
+        "endLine": 5
+      },
+      "evidence": [
+        {
+          "kind": "python_definition",
+          "description": "Function declaration found by static analysis"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "calls:function:app.api.users:get_user_endpoint->service:app.services.user_service:get_user",
+      "source": "function:app.api.users:get_user_endpoint",
+      "target": "service:app.services.user_service:get_user",
+      "type": "calls",
+      "status": "inferred",
+      "evidence": [
+        {
+          "kind": "function_call",
+          "description": "Handler contains a call to the resolved function",
+          "source": {
+            "path": "app/api/users.py",
+            "startLine": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "calls:function:app.api.users:list_users_endpoint->service:app.services.user_service:list_users",
+      "source": "function:app.api.users:list_users_endpoint",
+      "target": "service:app.services.user_service:list_users",
+      "type": "calls",
+      "status": "inferred",
+      "evidence": [
+        {
+          "kind": "function_call",
+          "description": "Handler contains a call to the resolved function",
+          "source": {
+            "path": "app/api/users.py",
+            "startLine": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "orm_relationship:database_model:app.models.user:Post->database_model:app.models.user:User",
+      "source": "database_model:app.models.user:Post",
+      "target": "database_model:app.models.user:User",
+      "type": "orm_relationship",
+      "status": "confirmed",
+      "evidence": [
+        {
+          "kind": "sqlalchemy_relationship",
+          "description": "SQLAlchemy foreign_key on Post.author_id references 'users.id'",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "orm_relationship:database_model:app.models.user:User->database_model:app.models.user:Post",
+      "source": "database_model:app.models.user:User",
+      "target": "database_model:app.models.user:Post",
+      "type": "orm_relationship",
+      "status": "confirmed",
+      "evidence": [
+        {
+          "kind": "sqlalchemy_relationship",
+          "description": "SQLAlchemy relationship on User.posts references 'Post'",
+          "source": {
+            "path": "app/models/user.py",
+            "startLine": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "route_handler:endpoint:app.api.users:GET:/users->function:app.api.users:list_users_endpoint",
+      "source": "endpoint:app.api.users:GET:/users",
+      "target": "function:app.api.users:list_users_endpoint",
+      "type": "route_handler",
+      "status": "confirmed",
+      "evidence": [
+        {
+          "kind": "route_decorator_binding",
+          "description": "Route decorator directly references the handler function",
+          "source": {
+            "path": "app/api/users.py",
+            "startLine": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "route_handler:endpoint:app.api.users:GET:/users/{user_id}->function:app.api.users:get_user_endpoint",
+      "source": "endpoint:app.api.users:GET:/users/{user_id}",
+      "target": "function:app.api.users:get_user_endpoint",
+      "type": "route_handler",
+      "status": "confirmed",
+      "evidence": [
+        {
+          "kind": "route_decorator_binding",
+          "description": "Route decorator directly references the handler function",
+          "source": {
+            "path": "app/api/users.py",
+            "startLine": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "uses_model:service:app.services.user_service:get_user->database_model:app.models.user:User",
+      "source": "service:app.services.user_service:get_user",
+      "target": "database_model:app.models.user:User",
+      "type": "uses_model",
+      "status": "inferred",
+      "evidence": [
+        {
+          "kind": "orm_model_reference",
+          "description": "Function references ORM model 'app.models.user.User'",
+          "source": {
+            "path": "app/services/user_service.py",
+            "startLine": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "uses_model:service:app.services.user_service:list_users->database_model:app.models.user:User",
+      "source": "service:app.services.user_service:list_users",
+      "target": "database_model:app.models.user:User",
+      "type": "uses_model",
+      "status": "inferred",
+      "evidence": [
+        {
+          "kind": "orm_model_reference",
+          "description": "Function references ORM model 'app.models.user.User'",
+          "source": {
+            "path": "app/services/user_service.py",
+            "startLine": 5
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": []
+}
