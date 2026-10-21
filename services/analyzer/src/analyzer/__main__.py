@@ -37,11 +37,22 @@ def main(argv=None) -> int:
         metavar="DIR",
         help="Additional directory name to exclude (repeatable).",
     )
+    parser.add_argument(
+        "--index",
+        action="store_true",
+        help="Emit the deterministic index document (for the AI analysis "
+        "pipeline) instead of the architecture graph.",
+    )
     args = parser.parse_args(argv)
 
     print(f"Analyzing {args.root}", file=sys.stderr)
     try:
-        result = analyzer_module.analyze(args.root, extra_excludes=args.exclude)
+        if args.index:
+            from .indexer import build_index
+
+            result = build_index(args.root, extra_excludes=args.exclude)
+        else:
+            result = analyzer_module.analyze(args.root, extra_excludes=args.exclude)
     except AnalyzerError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

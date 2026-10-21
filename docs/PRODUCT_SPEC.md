@@ -1,93 +1,84 @@
-# Product Specification — Code Visualizer
+# Product Specification -- Code Visualizer
 
 ## 1. Product summary
-Code Visualizer is a VS Code extension that helps developers understand the architecture of an existing Python backend by turning source-code evidence into an interactive, navigable graph.
+Code Visualizer is a VS Code extension that helps developers understand the architecture of an existing codebase. It combines a deterministic code index with AI interpretation: an AI agent explores the repository through bounded tools, identifies architectural components and relationships, and the extension renders the findings as an interactive, navigable graph.
 
 It is intended to help answer questions such as:
-- Which API endpoints exist?
-- Which service/business-logic functions appear to handle a request?
-- Which database models/tables are involved?
-- Where in the source code is each displayed element defined?
-- Which relationships are known, inferred, or unresolved?
+- What are the main subsystems and what is each responsible for?
+- Which API endpoints, services/business components, and data models exist?
+- What meaningful flows connect them, and where in the source is each element defined?
+- Which relationships are verified, inferred, or unresolved?
 
 ## 2. Target user and primary value
-The primary user is a developer opening an unfamiliar or growing codebase. The extension should reduce the effort required to build a mental map of the backend without requiring the developer to manually draw the architecture.
+The primary user is a developer opening an unfamiliar or growing codebase. The extension should reduce the effort required to build a mental map of the application without the developer manually drawing the architecture and without the product maintaining a growing collection of hand-written, framework-specific rules.
 
 ## 3. MVP user experience
-1. The user opens a Python project in VS Code.
-2. The user opens Code Visualizer from the extension.
-3. The extension identifies or asks for the Python project root.
-4. A local Python analyzer inspects supported source files without executing application code.
-5. The extension displays a high-level graph.
-6. The user selects a node to inspect details and navigate to its source location.
-7. The user can refresh/re-run analysis after source changes.
+1. The user opens a project in VS Code.
+2. The user opens Code Visualizer.
+3. On first use, the user selects a model provider and model and stores an API key in VS Code SecretStorage. OpenRouter is the initial provider.
+4. The user triggers analysis manually.
+5. A deterministic indexer builds a lightweight index of files, symbols, imports, and references. The agent explores the repository in bounded steps, reading targeted source excerpts and following references across modules.
+6. The agent submits structured findings; the extension validates them before display.
+7. The graph renders. The user selects a node to inspect details and evidence and navigate to source.
+8. The user re-runs analysis manually after source changes.
 
 ## 4. Default visualization
-The default view prioritizes understandable architecture over every symbol in the repository.
-
-Primary node categories:
+The default view prioritizes understandable architecture over every symbol in the repository. Primary node categories (identified by the agent, supported by index and hint evidence):
+- Subsystem/module groups and the repository overview
 - API endpoint / route
 - Service or business-logic component
 - Database model/table
-- Module/file, when useful for grouping or drill-down
+- Module/file, class, and function for drill-down
 
-Primary relationship categories:
-- route-to-handler
-- handler-to-service/function, when statically supported
-- service-to-model or service-to-database operation, when statically supported
-- model-to-model relationship, when supported by ORM metadata
+Primary relationship categories: route-to-handler, handler-to-service, service-to-model or database operation, model-to-model, and other application-flow relationships the agent can substantiate with evidence.
 
-The UI should support selecting a node, inspecting its details, and drilling down to implementation-level items such as files, classes, functions, and fields. The graph must not become a wall of every variable and import by default.
+The UI supports drilling down from the hierarchy to implementation-level items and back. The graph must not become a wall of every variable and import by default.
 
 ## 5. Evidence and uncertainty
-Every relationship should be grounded in static evidence. Where the analyzer cannot determine a relationship confidently, it must not fabricate one.
+Every relationship must be grounded in evidence with source locations. Validation is two-tiered:
+- **Source-location validation** (deterministic): the referenced file, symbol, and line range exist as cited.
+- **Semantic relationship validation** (separate): the claimed relationship itself is supported by code, for example a verified route binding or an ORM declaration. The existence of two symbols never proves a relationship between them.
 
-Represent, where applicable:
-- evidence kind or reason
-- source file and line range
-- confidence/status such as `confirmed`, `inferred`, or `unresolved`
+Statuses:
+- `confirmed`: the relationship was deterministically verified.
+- `inferred`: plausible and evidence-backed but not verified; the default for AI-only claims.
+- `unresolved`: a relevant reference could not be resolved confidently.
 
-Do not present an inferred relationship as a confirmed runtime call. Static analysis cannot guarantee the runtime path of dynamic Python code.
+Findings the agent cannot substantiate are downgraded or dropped with diagnostics, never presented as confirmed. Do not present an inferred relationship as a guaranteed runtime path.
 
-## 6. Supported analysis in the MVP
-- Python source files and module structure.
-- FastAPI route declarations and their handler functions.
-- Recognizable calls from route handlers to service/business-logic functions.
-- SQLAlchemy model classes, columns, and recognizable relationships.
-- Django ORM model classes, fields, and recognizable relationships.
-- Source locations suitable for opening the corresponding file in VS Code.
-- Clear diagnostics for unsupported patterns or analysis failures.
-
-ORM support should be implemented behind a common adapter/interface so additional ORMs can be added later without redesigning the graph contract.
+## 6. Analysis approach
+- A single tool-using agent; no multi-agent orchestration in the MVP.
+- OpenRouter as the initial model gateway behind a provider abstraction; the model is user-configurable; no free model or free API usage is assumed.
+- A deterministic indexer provides file discovery with exclusions, safe reading, a symbol/import/reference index, and framework hints. It supports the agent; it does not interpret architecture.
+- Explicit budgets: per-call context, files per turn, turns per subsystem, tokens per run. Budget exhaustion produces partial results plus diagnostics, never silent truncation.
+- Hierarchical understanding: repository overview, then subsystems, then modules, then components -- produced incrementally rather than from one prompt.
+- Python is the first supported target; the pipeline is language-neutral by design.
 
 ## 7. Explicitly out of scope for the MVP
-- MCP server/client integration.
-- LLM-based code interpretation or autonomous agent workflows.
-- Impact analysis and change prediction.
-- Automated code modification or code generation.
+- Automatic refresh and advanced incremental caching (deferred until the end-to-end AI graph works).
+- Multi-agent orchestration.
+- Languages other than Python.
 - Runtime tracing or guaranteed call-graph reconstruction.
-- Full support for every Python web framework.
-- Django URL routing; Django ORM model discovery is in scope.
-- Other programming languages.
-- Remote/cloud analysis service.
-- Authentication, accounts, collaboration, or hosted storage.
+- Impact analysis, automated code modification, or code generation.
+- MCP server/client integration.
+- A hosted/cloud analysis service; accounts, collaboration, hosted storage.
+- Elaborate model-discovery or marketplace UX; a practical model-selection flow is enough for now.
 
 ## 8. Product quality requirements
-- Analysis runs locally on the user's machine.
-- Source code is not uploaded to a remote service by the analyzer.
-- Analysis should not execute the analyzed application.
-- Large or unsupported codebases should fail gracefully and provide useful diagnostics.
-- The graph should remain readable and navigable.
-- Clicking an element should lead to its source when a valid source location exists.
-- The UI should distinguish unavailable information from an empty result.
-- The project should be testable in small units: analyzer parsing, contract validation, extension/analyzer communication, and UI rendering.
+- Indexing runs locally on the user's machine; the extension itself sends no telemetry.
+- **Privacy boundary:** analysis requires sending selected source excerpts to the configured model provider (OpenRouter and its upstream model vendors). The user must be informed before enabling AI analysis, and configured exclude patterns must be honored.
+- Credentials live only in VS Code SecretStorage.
+- Analysis must never execute the analyzed application.
+- Token usage and estimated cost are recorded and shown per run; budget ceilings stop runs cleanly with partial status.
+- Large or unsupported codebases degrade gracefully with useful diagnostics. Coverage may be partial for very large repositories, and the UI must say so; the design does not guarantee scalability for arbitrarily large repositories.
+- Clicking an element opens its source when a valid location exists.
+- The UI distinguishes unavailable information from an empty result.
+- The project is testable in small units; AI-dependent behavior must be testable offline with a mocked provider.
 
-## 9. MVP success criteria
+## 9. MVP success criteria (end-to-end proof of concept)
 The MVP is useful when it can:
-- Open in VS Code and display a graph.
-- Analyze a small sample FastAPI project.
-- Discover supported SQLAlchemy and Django ORM models.
-- Show evidence-backed relationships without inventing unsupported ones.
-- Let the user inspect a node and navigate to source.
-- Display actionable errors if Python is unavailable or analysis fails.
-- Re-run analysis on request.
+- Let the user configure an OpenRouter API key (SecretStorage) and model, with clear errors for missing or invalid configuration.
+- Manually analyze a small real Python repository using bounded agent exploration.
+- Produce validated, structured findings: source locations verified; AI-only relationships shown as `inferred`; unverifiable claims downgraded or dropped with diagnostics.
+- Render the resulting graph in the existing React Flow UI with evidence, statuses, and node inspection.
+- Show token usage and estimated cost for the run, and actionable errors for failures.

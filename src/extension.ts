@@ -2,6 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import { OPENROUTER_API_KEY_SECRET } from './analysis/openRouterConfig';
+
 // The webview UI is a Vite app built into webview-ui/dist. Only the production
 // build is ever loaded here; no development-server paths are used.
 const WEBVIEW_DIST_DIR = path.join('webview-ui', 'dist');
@@ -88,7 +90,32 @@ export function activate(context: vscode.ExtensionContext) {
 		openVisualizer(context, output);
 	});
 
-	context.subscriptions.push(disposable);
+	// Store the OpenRouter API key in SecretStorage via the command palette:
+	// "Code Visualizer: Set OpenRouter API Key". The value is never logged.
+	const setApiKey = vscode.commands.registerCommand(
+		'code-visualizer.setOpenRouterApiKey',
+		async () => {
+			const input = await vscode.window.showInputBox({
+				title: 'OpenRouter API Key',
+				prompt:
+					'Paste your OpenRouter API key from https://openrouter.ai/keys. ' +
+					'It is stored in SecretStorage and never logged.',
+				password: true,
+				ignoreFocusOut: true,
+				validateInput: (value: string): string | undefined =>
+					value.trim().length === 0 ? 'API key must not be empty.' : undefined,
+			});
+			if (input === undefined) {
+				output.appendLine('[setOpenRouterApiKey] Cancelled; stored key unchanged.');
+				return;
+			}
+			await context.secrets.store(OPENROUTER_API_KEY_SECRET, input.trim());
+			output.appendLine('[setOpenRouterApiKey] API key saved to SecretStorage.');
+			void vscode.window.showInformationMessage('OpenRouter API key saved.');
+		}
+	);
+
+	context.subscriptions.push(disposable, setApiKey);
 	context.subscriptions.push(output);
 }
 

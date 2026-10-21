@@ -1,4 +1,4 @@
-# Python Analyzer (Milestone 2)
+# Python Analyzer
 
 A local, static analyzer for Python backends. It parses source files with the
 standard-library `ast` module — it **never imports or executes** the analyzed
@@ -6,6 +6,16 @@ project — and emits JSON conforming to `docs/ARCHITECTURE_DATA_MODEL.md`
 (`schemaVersion: "1.0"`).
 
 No third-party dependencies; Python 3.10+ (developed and tested on 3.12).
+
+Two modes are available:
+
+- **Analyze mode** (default) — the legacy v1.0 architecture graph from the
+  rule-based passes. Retained for now; the rule-based *interpretation* is
+  deprecated (see `docs/ARCHITECTURE.md` section 9). The product's architecture
+  engine is the AI agent, not this mode.
+- **Index mode** (`--index`) — the deterministic **index document** that feeds
+  the AI agent (Milestone 3). This is the mode the extension's `IndexService`
+  consumes.
 
 ## Run
 
@@ -26,6 +36,38 @@ Output is a single JSON document on stdout (or `--output` file). Logs go to
 stderr so stdout stays pure JSON. Exit code is `0` on success (diagnostics do
 not change the exit code) and `2` for fatal errors such as a missing root.
 
+## Index mode (Milestone 3)
+
+```powershell
+python -m analyzer <path-to-python-project> --index [-o output.json] [--exclude DIR ...]
+```
+
+`--index` emits the deterministic **index document** consumed by the
+extension host's `IndexService` (the temporary `IndexBackend`; see
+`docs/ARCHITECTURE.md`). It is mechanical only — discovery, symbols,
+imports/references, and framework hints — and never runs the deprecated
+rule-based relationship pass. The document is fully deterministic (no
+timestamps), so identical trees produce byte-identical JSON.
+
+Shape (`schemaVersion: "1.0"` for the index document):
+
+| Field | Content |
+| --- | --- |
+| `schemaVersion` | `"1.0"` |
+| `root` | Absolute project root |
+| `digest` | Size-capped repo digest: `tree` (pruned directory tree + file paths), `manifest` (per-file path/lineCount/frameworks/imports/symbols summaries), `counts` (files, totalLines, endpoints, models, ormRelationships, references, diagnostics) |
+| `files` | Per module: `path`, `module`, `lineCount`, `frameworks`, `imports` (`local`/`module`/`name`), `symbols` (functions/classes with `qualname`, `className`, `startLine`, `endLine`) |
+| `endpoints` | FastAPI hint records: `id`, `module`, `methods`, `path`, `sourcePath`, `line` |
+| `routeBindings` | `endpointId` → `handlerModule`/`handlerQualname` (deterministically verifiable route→handler bindings) |
+| `models` | ORM hint records: `id`, `module`, `name`, `table`, `sourcePath`, `startLine`, `endLine`, `fields[]` (`name`, `kind`, `type`, `targetHint`, `line`) |
+| `ormRelationships` | `sourceId`, `targetId`, `kind`, `line` |
+| `references` | Resolvable cross-symbol calls: `sourceModule`/`sourceQualname` → `targetModule`/`targetQualname`, `line` |
+| `diagnostics` | Same diagnostic records as analyze mode |
+
+Hint entries (`endpoints`, `models`, `ormRelationships`) are reuses of the
+existing route/ORM passes — high-confidence, deterministic facts only.
+They are raw material for the agent, not architectural interpretation.
+
 ## Tests
 
 From `code-visualizer/`:
@@ -36,6 +78,17 @@ python -m unittest discover -s services/analyzer/tests -t services/analyzer
 
 Tests use only the standard library, run offline, and analyze committed
 fixture projects under `tests/fixtures/`:
+
+| Test module | Covers |
+| --- | --- |
+| `test_indexer.py` | The deterministic index document: digest shape, symbol/import extraction, references, framework hints, route bindings, and determinism (byte-identical output for identical trees) |
+| `test_contract.py` | Analyze-mode output matches the shared contract |
+| `test_determinism.py` | Repeated runs produce identical output |
+| `test_diagnostics.py` | Parse errors surface as diagnostics without aborting |
+| `test_discovery.py` | File discovery and exclusions |
+| `test_routes.py` | FastAPI route detection |
+| `test_orm_sqlalchemy.py` / `test_orm_django.py` | ORM hint extraction |
+| `test_relationships.py` | Legacy rule-based relationship pass (deprecated mode) |
 
 | Fixture | Covers |
 | --- | --- |
@@ -68,7 +121,13 @@ fixture projects under `tests/fixtures/`:
   standard field types; `ForeignKey`/`OneToOneField`/`ManyToManyField`
   relationships. Django URL routing is explicitly out of scope.
 
-### Service classification rule
+### Service classification rule (deprecated)
+
+> **Deprecated.** Naming modules "services" by filename is architecture
+> interpretation, which now belongs to the AI agent. This rule is retained only
+> so the legacy analyze mode keeps working until the rule-engine decommission
+> step (Milestone 6). Do not extend it, and do not add new rules of this kind.
+> Index mode does not use it.
 
 A module is treated as *service/business logic* when any dotted segment is one
 of `service`, `services`, `business`, `logic`, or its last segment ends with

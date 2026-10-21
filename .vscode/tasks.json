@@ -4,6 +4,12 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "build",
+			"type": "npm",
+			"script": "compile",
+			"problemMatcher": []
+		},
+		{
             "label": "watch",
             "dependsOn": [
                 "npm: watch:tsc",

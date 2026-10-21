@@ -16,8 +16,28 @@
       {
         "command": "code-visualizer.openVisualizer",
         "title": "Open Code Visualizer"
+      },
+      {
+        "category": "Code Visualizer",
+        "command": "code-visualizer.setOpenRouterApiKey",
+        "title": "Set OpenRouter API Key"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Code Visualizer",
+      "properties": {
+        "codeVisualizer.openRouter.model": {
+          "type": "string",
+          "default": "openai/gpt-4o-mini",
+          "markdownDescription": "OpenRouter model id used for AI analysis (e.g. `openai/gpt-4o-mini`, `anthropic/claude-3.7-sonnet`). Browse ids at https://openrouter.ai/models."
+        },
+        "codeVisualizer.openRouter.structuredOutput": {
+          "type": "boolean",
+          "default": true,
+          "description": "Request JSON-schema structured output from the model. Turn off for models that do not support response_format json_schema."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
