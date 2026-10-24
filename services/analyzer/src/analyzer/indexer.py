@@ -28,7 +28,7 @@ from .builder import AnalysisBuilder
 from .models import AnalyzerError, Diagnostic
 from .orm import DjangoAdapter, SQLAlchemyAdapter
 
-INDEX_SCHEMA_VERSION = "1.0"
+INDEX_SCHEMA_VERSION = "1.1"
 
 KNOWN_FRAMEWORKS = frozenset({"fastapi", "flask", "django", "sqlalchemy", "starlette"})
 
@@ -146,6 +146,7 @@ def build_index(root: str, extra_excludes: Optional[Sequence[str]] = None) -> Di
             class_info = ms.classes[class_name]
             symbols_doc.append(
                 {
+                    "id": f"class:{module_name}:{class_info.name}",
                     "kind": "class",
                     "name": class_info.name,
                     "qualname": class_info.name,
@@ -158,6 +159,7 @@ def build_index(root: str, extra_excludes: Optional[Sequence[str]] = None) -> Di
             function_info = ms.functions[qualname]
             symbols_doc.append(
                 {
+                    "id": f"function:{module_name}:{function_info.qualname}",
                     "kind": "function",
                     "name": function_info.name,
                     "qualname": function_info.qualname,
@@ -179,6 +181,7 @@ def build_index(root: str, extra_excludes: Optional[Sequence[str]] = None) -> Di
             {
                 "path": ms.path,
                 "module": module_name,
+                "language": "python",
                 "lineCount": _count_lines(abs_path),
                 "frameworks": frameworks,
                 "imports": imports_doc,
@@ -208,6 +211,8 @@ def build_index(root: str, extra_excludes: Optional[Sequence[str]] = None) -> Di
 
     # -- resolvable call references for every function -----------------------
     references: List[Dict[str, Any]] = []
+    # Build reverse reference index: target -> list of sources
+    references_by_target: Dict[str, List[Dict[str, Any]]] = {}
     for module_name in sorted(registry.modules):
         ms = registry.modules[module_name]
         for qualname in sorted(ms.functions):
@@ -219,24 +224,32 @@ def build_index(root: str, extra_excludes: Optional[Sequence[str]] = None) -> Di
                 target_module, target_qual = resolved
                 if (target_module, target_qual) == (module_name, qualname):
                     continue
-                references.append(
-                    {
-                        "sourceModule": module_name,
-                        "sourceQualname": qualname,
-                        "targetModule": target_module,
-                        "targetQualname": target_qual,
-                        "line": call.line,
-                    }
-                )
+                ref = {
+                    "sourceModule": module_name,
+                    "sourceQualname": qualname,
+                    "targetModule": target_module,
+                    "targetQualname": target_qual,
+                    "line": call.line,
+                }
+                references.append(ref)
+                # Build reverse index
+                target_key = f"{target_module}:{target_qual}"
+                references_by_target.setdefault(target_key, []).append(ref)
     references.sort(
         key=lambda r: (r["sourceModule"], r["sourceQualname"], r["line"], r["targetModule"], r["targetQualname"])
     )
+    # Sort reverse references for determinism
+    for target_key in references_by_target:
+        references_by_target[target_key].sort(
+            key=lambda r: (r["sourceModule"], r["sourceQualname"], r["line"])
+        )
 
     digest = _build_digest(files_doc, endpoints, models_doc, orm_relationships, references, diagnostics)
 
     return {
         "schemaVersion": INDEX_SCHEMA_VERSION,
         "root": root_path,
+        "language": "python",
         "digest": digest,
         "files": files_doc,
         "endpoints": endpoints,
@@ -244,6 +257,7 @@ def build_index(root: str, extra_excludes: Optional[Sequence[str]] = None) -> Di
         "models": models_doc,
         "ormRelationships": orm_relationships,
         "references": references,
+        "reverseReferences": references_by_target,
         "diagnostics": [
             diagnostic.to_dict()
             for diagnostic in sorted(diagnostics, key=lambda d: d.sort_key())

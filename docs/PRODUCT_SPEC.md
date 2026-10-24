@@ -82,3 +82,25 @@ The MVP is useful when it can:
 - Produce validated, structured findings: source locations verified; AI-only relationships shown as `inferred`; unverifiable claims downgraded or dropped with diagnostics.
 - Render the resulting graph in the existing React Flow UI with evidence, statuses, and node inspection.
 - Show token usage and estimated cost for the run, and actionable errors for failures.
+
+## 10. Current implementation status (as of 2026-10-21)
+
+**Completed:**
+- OpenRouter provider layer with typed errors, retries, cost tracking
+- Credential storage in SecretStorage, model/settings configuration
+- Deterministic index document v1.1 (schemaVersion: "1.1") with:
+  - Stable symbol IDs (`class:{module}:{Name}`, `function:{module}:{qualname}`)
+  - Explicit language field per file (`"python"`)
+  - Reverse reference index (`reverseReferences`)
+  - Per-file language field
+- Agent tool boundary specification (`docs/AGENT_TOOLS.md`)
+- Index-to-graph mapping specification (`docs/INDEX_TO_GRAPH_MAPPING.md`)
+- All analyzer tests pass (43 tests)
+
+**In Progress / Next:**
+- TypeScript `IndexBackend` interface and `IndexService`
+- `AnalysisController` and `code-visualizer.analyze` command
+- Privacy disclosure UI
+- `AgentRunner` with bounded tool loop
+- `FindingValidator` with two-tier validation
+- Contract v2.0 document assembly and real rendering path

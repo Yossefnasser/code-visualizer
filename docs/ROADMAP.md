@@ -24,12 +24,14 @@ Scope (one thin vertical slice, in order):
 2. `[~]` Credential and settings UX: a command to store the API key in SecretStorage; settings for provider, model, and budgets; a first-run flow that discloses the privacy boundary. Model selection is practical (free-text model id plus a short suggested list documented in this repository); full model discovery is deferred.
    - Done: `Code Visualizer: Set OpenRouter API Key` command (SecretStorage only), settings `codeVisualizer.openRouter.model` and `codeVisualizer.openRouter.structuredOutput`, helper module `src/analysis/openRouterConfig.ts`.
    - Not done: budget settings, the first-run privacy disclosure flow, and the command that actually starts an analysis.
-3. `[~]` Minimal IndexService with an IndexBackend implemented by the Python sidecar: file discovery, symbols, imports/references, framework hints, and a repo digest.
-   - Done on the sidecar side: `services/analyzer/src/analyzer/indexer.py` emits a deterministic index document (digest, files, symbols, imports, references, framework hints) via `python -m analyzer <root> --index`; 40 analyzer tests pass.
+3. `[x]` Minimal IndexService with an IndexBackend implemented by the Python sidecar: file discovery, symbols, imports/references, framework hints, and a repo digest.
+   - Done on the sidecar side: `services/analyzer/src/analyzer/indexer.py` emits a deterministic index document v1.1 (digest, files, symbols with stable IDs, imports, references, reverseReferences, framework hints, language field) via `python -m analyzer <root> --index`; 43 analyzer tests pass.
    - Not done: the TypeScript `IndexBackend` interface and `IndexService` that spawns the sidecar and translates queries.
-4. `[ ]` AgentRunner with tools: `repo.overview`, `index.query`, `files.read` (line ranges, per-call budget), and `findings.submit`; a bounded single-agent loop that surveys the repository and explores one or two subsystems.
-5. `[ ]` FindingValidator with two-tier validation: deterministic source-location validation against the index; semantic validation gates `confirmed`; AI-only relationships remain `inferred`; unverifiable claims are downgraded or dropped with diagnostics; one repair round-trip for invalid model output.
-6. `[ ]` Assemble the result as a contract v2.0 document and render it in the React Flow webview behind the real analysis path (the mock fixture is retained for offline UI development). Manual trigger only.
+4. `[x]` Agent tool boundary specified: `repo.overview`, `index.query`, `files.read`, `files.search`, `findings.submit` documented in `docs/AGENT_TOOLS.md`.
+5. `[x]` Index-to-graph mapping specified in `docs/INDEX_TO_GRAPH_MAPPING.md`.
+6. `[ ]` AgentRunner with tools: `repo.overview`, `index.query`, `files.read` (line ranges, per-call budget), and `findings.submit`; a bounded single-agent loop that surveys the repository and explores one or two subsystems.
+7. `[ ]` FindingValidator with two-tier validation: deterministic source-location validation against the index; semantic validation gates `confirmed`; AI-only relationships remain `inferred`; unverifiable claims are downgraded or dropped with diagnostics; one repair round-trip for invalid model output.
+8. `[ ]` Assemble the result as a contract v2.0 document and render it in the React Flow webview behind the real analysis path (the mock fixture is retained for offline UI development). Manual trigger only.
    - Note: `packages/contracts/` (machine-readable contract v2.0 schema + examples) does not exist yet; the contract is currently specified in `docs/ARCHITECTURE_DATA_MODEL.md` only.
 
 Acceptance criteria:

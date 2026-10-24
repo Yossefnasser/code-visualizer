@@ -8,6 +8,7 @@ from tests.support import index_fixture
 INDEX_KEYS = {
     "schemaVersion",
     "root",
+    "language",
     "digest",
     "files",
     "endpoints",
@@ -15,6 +16,7 @@ INDEX_KEYS = {
     "models",
     "ormRelationships",
     "references",
+    "reverseReferences",
     "diagnostics",
 }
 
@@ -23,7 +25,9 @@ class IndexerTests(unittest.TestCase):
     def test_index_shape_and_schema_version(self):
         doc = index_fixture("fastapi_app")
         self.assertEqual(set(doc.keys()), INDEX_KEYS)
-        self.assertEqual(doc["schemaVersion"], "1.0")
+        self.assertEqual(doc["schemaVersion"], "1.1")
+        self.assertEqual(doc["language"], "python")
+        self.assertIn("reverseReferences", doc)
         digest = doc["digest"]
         self.assertIn("tree", digest)
         self.assertIn("manifest", digest)
@@ -105,6 +109,37 @@ class IndexerTests(unittest.TestCase):
         self.assertEqual(counts["models"], len(doc["models"]))
         self.assertEqual(counts["references"], len(doc["references"]))
         self.assertEqual(len(doc["digest"]["manifest"]), len(doc["files"]))
+
+    def test_symbols_have_stable_ids(self):
+        doc = index_fixture("fastapi_app")
+        for file_doc in doc["files"]:
+            for symbol in file_doc["symbols"]:
+                self.assertIn("id", symbol)
+                self.assertTrue(symbol["id"])
+                if symbol["kind"] == "class":
+                    self.assertTrue(symbol["id"].startswith("class:"))
+                elif symbol["kind"] == "function":
+                    self.assertTrue(symbol["id"].startswith("function:"))
+
+    def test_files_have_language_field(self):
+        doc = index_fixture("fastapi_app")
+        for file_doc in doc["files"]:
+            self.assertEqual(file_doc["language"], "python")
+
+    def test_reverse_references_exist_and_sorted(self):
+        doc = index_fixture("fastapi_app")
+        self.assertIn("reverseReferences", doc)
+        rev = doc["reverseReferences"]
+        self.assertIsInstance(rev, dict)
+        # Check that reverse references are sorted
+        for target_key, refs in rev.items():
+            for i in range(len(refs) - 1):
+                a = refs[i]
+                b = refs[i + 1]
+                self.assertLessEqual(
+                    (a["sourceModule"], a["sourceQualname"], a["line"]),
+                    (b["sourceModule"], b["sourceQualname"], b["line"]),
+                )
 
 
 if __name__ == "__main__":

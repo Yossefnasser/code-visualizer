@@ -1,0 +1,419 @@
+﻿{
+  "schemaVersion": "1.0",
+  "root": "D:\\CODE\\architecture vs code extension\\code-visualizer\\services\\analyzer\\tests\\fixtures\\fastapi_app",
+  "digest": {
+    "tree": [
+      "app/",
+      "app/api/",
+      "app/models/",
+      "app/services/",
+      "app/__init__.py",
+      "app/api/__init__.py",
+      "app/api/users.py",
+      "app/main.py",
+      "app/models/__init__.py",
+      "app/models/user.py",
+      "app/services/__init__.py",
+      "app/services/user_service.py"
+    ],
+    "manifest": [
+      {
+        "path": "app/__init__.py",
+        "lineCount": 0,
+        "frameworks": [],
+        "imports": 0,
+        "symbols": 0
+      },
+      {
+        "path": "app/api/__init__.py",
+        "lineCount": 0,
+        "frameworks": [],
+        "imports": 0,
+        "symbols": 0
+      },
+      {
+        "path": "app/api/users.py",
+        "lineCount": 15,
+        "frameworks": [
+          "fastapi"
+        ],
+        "imports": 3,
+        "symbols": 2
+      },
+      {
+        "path": "app/main.py",
+        "lineCount": 3,
+        "frameworks": [
+          "fastapi"
+        ],
+        "imports": 1,
+        "symbols": 0
+      },
+      {
+        "path": "app/models/__init__.py",
+        "lineCount": 0,
+        "frameworks": [],
+        "imports": 0,
+        "symbols": 0
+      },
+      {
+        "path": "app/models/user.py",
+        "lineCount": 20,
+        "frameworks": [
+          "sqlalchemy"
+        ],
+        "imports": 5,
+        "symbols": 2
+      },
+      {
+        "path": "app/services/__init__.py",
+        "lineCount": 0,
+        "frameworks": [],
+        "imports": 0,
+        "symbols": 0
+      },
+      {
+        "path": "app/services/user_service.py",
+        "lineCount": 9,
+        "frameworks": [],
+        "imports": 1,
+        "symbols": 2
+      }
+    ],
+    "counts": {
+      "files": 8,
+      "totalLines": 47,
+      "endpoints": 2,
+      "models": 2,
+      "ormRelationships": 2,
+      "references": 4,
+      "diagnostics": 0
+    }
+  },
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "module": "app",
+      "lineCount": 0,
+      "frameworks": [],
+      "imports": [],
+      "symbols": []
+    },
+    {
+      "path": "app/api/__init__.py",
+      "module": "app.api",
+      "lineCount": 0,
+      "frameworks": [],
+      "imports": [],
+      "symbols": []
+    },
+    {
+      "path": "app/api/users.py",
+      "module": "app.api.users",
+      "lineCount": 15,
+      "frameworks": [
+        "fastapi"
+      ],
+      "imports": [
+        {
+          "local": "APIRouter",
+          "module": "fastapi",
+          "name": "APIRouter"
+        },
+        {
+          "local": "get_user",
+          "module": "app.services.user_service",
+          "name": "get_user"
+        },
+        {
+          "local": "list_users",
+          "module": "app.services.user_service",
+          "name": "list_users"
+        }
+      ],
+      "symbols": [
+        {
+          "kind": "function",
+          "name": "list_users_endpoint",
+          "qualname": "list_users_endpoint",
+          "className": null,
+          "startLine": 9,
+          "endLine": 10
+        },
+        {
+          "kind": "function",
+          "name": "get_user_endpoint",
+          "qualname": "get_user_endpoint",
+          "className": null,
+          "startLine": 14,
+          "endLine": 15
+        }
+      ]
+    },
+    {
+      "path": "app/main.py",
+      "module": "app.main",
+      "lineCount": 3,
+      "frameworks": [
+        "fastapi"
+      ],
+      "imports": [
+        {
+          "local": "FastAPI",
+          "module": "fastapi",
+          "name": "FastAPI"
+        }
+      ],
+      "symbols": []
+    },
+    {
+      "path": "app/models/__init__.py",
+      "module": "app.models",
+      "lineCount": 0,
+      "frameworks": [],
+      "imports": [],
+      "symbols": []
+    },
+    {
+      "path": "app/models/user.py",
+      "module": "app.models.user",
+      "lineCount": 20,
+      "frameworks": [
+        "sqlalchemy"
+      ],
+      "imports": [
+        {
+          "local": "ForeignKey",
+          "module": "sqlalchemy",
+          "name": "ForeignKey"
+        },
+        {
+          "local": "Mapped",
+          "module": "sqlalchemy.orm",
+          "name": "Mapped"
+        },
+        {
+          "local": "declarative_base",
+          "module": "sqlalchemy.orm",
+          "name": "declarative_base"
+        },
+        {
+          "local": "mapped_column",
+          "module": "sqlalchemy.orm",
+          "name": "mapped_column"
+        },
+        {
+          "local": "relationship",
+          "module": "sqlalchemy.orm",
+          "name": "relationship"
+        }
+      ],
+      "symbols": [
+        {
+          "kind": "class",
+          "name": "User",
+          "qualname": "User",
+          "startLine": 7,
+          "endLine": 12,
+          "bases": [
+            "Base"
+          ]
+        },
+        {
+          "kind": "class",
+          "name": "Post",
+          "qualname": "Post",
+          "startLine": 15,
+          "endLine": 20,
+          "bases": [
+            "Base"
+          ]
+        }
+      ]
+    },
+    {
+      "path": "app/services/__init__.py",
+      "module": "app.services",
+      "lineCount": 0,
+      "frameworks": [],
+      "imports": [],
+      "symbols": []
+    },
+    {
+      "path": "app/services/user_service.py",
+      "module": "app.services.user_service",
+      "lineCount": 9,
+      "frameworks": [],
+      "imports": [
+        {
+          "local": "User",
+          "module": "app.models.user",
+          "name": "User"
+        }
+      ],
+      "symbols": [
+        {
+          "kind": "function",
+          "name": "list_users",
+          "qualname": "list_users",
+          "className": null,
+          "startLine": 4,
+          "endLine": 5
+        },
+        {
+          "kind": "function",
+          "name": "get_user",
+          "qualname": "get_user",
+          "className": null,
+          "startLine": 8,
+          "endLine": 9
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "endpoint:app.api.users:GET:/users",
+      "module": "app.api.users",
+      "methods": [
+        "GET"
+      ],
+      "path": "/users",
+      "sourcePath": "app/api/users.py",
+      "line": 9
+    },
+    {
+      "id": "endpoint:app.api.users:GET:/users/{user_id}",
+      "module": "app.api.users",
+      "methods": [
+        "GET"
+      ],
+      "path": "/users/{user_id}",
+      "sourcePath": "app/api/users.py",
+      "line": 14
+    }
+  ],
+  "routeBindings": [
+    {
+      "endpointId": "endpoint:app.api.users:GET:/users",
+      "handlerModule": "app.api.users",
+      "handlerQualname": "list_users_endpoint"
+    },
+    {
+      "endpointId": "endpoint:app.api.users:GET:/users/{user_id}",
+      "handlerModule": "app.api.users",
+      "handlerQualname": "get_user_endpoint"
+    }
+  ],
+  "models": [
+    {
+      "id": "database_model:app.models.user:Post",
+      "module": "app.models.user",
+      "name": "Post",
+      "table": "posts",
+      "sourcePath": "app/models/user.py",
+      "startLine": 15,
+      "endLine": 20,
+      "fields": [
+        {
+          "name": "id",
+          "kind": "column",
+          "type": "int",
+          "targetHint": null,
+          "line": 18
+        },
+        {
+          "name": "title",
+          "kind": "column",
+          "type": "str",
+          "targetHint": null,
+          "line": 19
+        },
+        {
+          "name": "author_id",
+          "kind": "foreign_key",
+          "type": "int",
+          "targetHint": "users.id",
+          "line": 20
+        }
+      ]
+    },
+    {
+      "id": "database_model:app.models.user:User",
+      "module": "app.models.user",
+      "name": "User",
+      "table": "users",
+      "sourcePath": "app/models/user.py",
+      "startLine": 7,
+      "endLine": 12,
+      "fields": [
+        {
+          "name": "id",
+          "kind": "column",
+          "type": "int",
+          "targetHint": null,
+          "line": 10
+        },
+        {
+          "name": "email",
+          "kind": "column",
+          "type": "str",
+          "targetHint": null,
+          "line": 11
+        },
+        {
+          "name": "posts",
+          "kind": "relationship",
+          "type": null,
+          "targetHint": "Post",
+          "line": 12
+        }
+      ]
+    }
+  ],
+  "ormRelationships": [
+    {
+      "sourceId": "database_model:app.models.user:Post",
+      "targetId": "database_model:app.models.user:User",
+      "kind": "sqlalchemy_relationship",
+      "line": 20
+    },
+    {
+      "sourceId": "database_model:app.models.user:User",
+      "targetId": "database_model:app.models.user:Post",
+      "kind": "sqlalchemy_relationship",
+      "line": 12
+    }
+  ],
+  "references": [
+    {
+      "sourceModule": "app.api.users",
+      "sourceQualname": "get_user_endpoint",
+      "targetModule": "app.services.user_service",
+      "targetQualname": "get_user",
+      "line": 15
+    },
+    {
+      "sourceModule": "app.api.users",
+      "sourceQualname": "list_users_endpoint",
+      "targetModule": "app.services.user_service",
+      "targetQualname": "list_users",
+      "line": 10
+    },
+    {
+      "sourceModule": "app.services.user_service",
+      "sourceQualname": "get_user",
+      "targetModule": "app.models.user",
+      "targetQualname": "User.query.get",
+      "line": 9
+    },
+    {
+      "sourceModule": "app.services.user_service",
+      "sourceQualname": "list_users",
+      "targetModule": "app.models.user",
+      "targetQualname": "User.query.all",
+      "line": 5
+    }
+  ],
+  "diagnostics": []
+}

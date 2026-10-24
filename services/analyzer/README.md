@@ -49,19 +49,21 @@ imports/references, and framework hints — and never runs the deprecated
 rule-based relationship pass. The document is fully deterministic (no
 timestamps), so identical trees produce byte-identical JSON.
 
-Shape (`schemaVersion: "1.0"` for the index document):
+Shape (`schemaVersion: "1.1"` for the index document):
 
 | Field | Content |
 | --- | --- |
-| `schemaVersion` | `"1.0"` |
+| `schemaVersion` | `"1.1"` |
 | `root` | Absolute project root |
+| `language` | Primary language of the indexed project (`"python"`) |
 | `digest` | Size-capped repo digest: `tree` (pruned directory tree + file paths), `manifest` (per-file path/lineCount/frameworks/imports/symbols summaries), `counts` (files, totalLines, endpoints, models, ormRelationships, references, diagnostics) |
-| `files` | Per module: `path`, `module`, `lineCount`, `frameworks`, `imports` (`local`/`module`/`name`), `symbols` (functions/classes with `qualname`, `className`, `startLine`, `endLine`) |
+| `files` | Per module: `path`, `module`, `language`, `lineCount`, `frameworks`, `imports` (`local`/`module`/`name`), `symbols` (functions/classes with `id`, `qualname`, `className`, `startLine`, `endLine`, `bases` for classes) |
 | `endpoints` | FastAPI hint records: `id`, `module`, `methods`, `path`, `sourcePath`, `line` |
 | `routeBindings` | `endpointId` → `handlerModule`/`handlerQualname` (deterministically verifiable route→handler bindings) |
 | `models` | ORM hint records: `id`, `module`, `name`, `table`, `sourcePath`, `startLine`, `endLine`, `fields[]` (`name`, `kind`, `type`, `targetHint`, `line`) |
 | `ormRelationships` | `sourceId`, `targetId`, `kind`, `line` |
 | `references` | Resolvable cross-symbol calls: `sourceModule`/`sourceQualname` → `targetModule`/`targetQualname`, `line` |
+| `reverseReferences` | Reverse reference index: `targetModule:targetQualname` → list of references pointing to it (sorted) |
 | `diagnostics` | Same diagnostic records as analyze mode |
 
 Hint entries (`endpoints`, `models`, `ormRelationships`) are reuses of the
@@ -149,6 +151,16 @@ Deterministic, derived from node type and qualified symbol:
 Module names are derived from workspace-relative paths (a `__init__.py`
 contributes its package name). IDs are stable within one analysis result; they
 are not guaranteed stable across refactors (per contract §8).
+
+### Symbol ID stability
+
+Symbol IDs in the `files[].symbols` array (`class:{module}:{Name}` and
+`function:{module}:{qualname}`) are derived from the module name and symbol
+qualname. They are stable as long as the module path and symbol name remain
+unchanged. They do not depend on line numbers. However, they are not guaranteed
+stable across refactors that rename modules, move files, or change symbol names.
+The index document is a snapshot of the codebase at a point in time; consumers
+should not rely on cross-run ID stability without additional correlation logic.
 
 ## Diagnostics
 

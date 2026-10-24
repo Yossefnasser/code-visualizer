@@ -178,3 +178,28 @@ The rule-based analyzer is no longer the primary architecture engine. Dispositio
 | Tests asserting service classification or rule-based relationship semantics | Reworked | Mechanical tests stay green; interpretive assertions become hint-provider tests. |
 
 New framework/language support comes from AI interpretation plus, where justified, high-confidence deterministic hints -- not from growing rule code. Removal of deprecated interpretation code is tracked in the roadmap (Milestone 6 decommission step).
+
+## 10. Agent tool boundary
+
+The agent's toolset is specified in `docs/AGENT_TOOLS.md`. The five tools are:
+
+1. `repo.overview` — returns the repository digest for initial survey
+2. `index.query` — queries the deterministic index (symbols, imports, references, hints)
+3. `files.read` — reads targeted source line ranges
+4. `files.search` — searches source when the index cannot answer
+5. `findings.submit` — submits structured findings with evidence
+
+The `IndexBackend` interface (implemented by the Python sidecar) provides the query surface for `index.query`. The extension host implements the other tools with privileged file access and budget enforcement.
+
+## 11. Index-to-graph mapping
+
+The mapping from the deterministic index (v1.1) and validated AI findings to the architecture graph contract (v2.0) is specified in `docs/INDEX_TO_GRAPH_MAPPING.md`. Key principles:
+
+- Index entries describe discoverable source structures (files, symbols, imports)
+- References describe observed structural connections (calls, imports)
+- AI findings express interpreted architectural relationships
+- Validation determines whether findings satisfy evidence requirements
+- Graph mapping determines which information appears as nodes and edges
+- `confirmed` status requires deterministic verification of the relationship itself
+- AI-only relationships remain `inferred` even when both endpoints exist
+- Default graph shows high-level architecture; drill-down reveals implementation detail

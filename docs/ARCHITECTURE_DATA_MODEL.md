@@ -126,7 +126,7 @@ The data must support a high-level view, hierarchy navigation, and detail drill-
 - [ ] Add tests for unknown node/edge types, missing optional fields, and `ai_observation` evidence that lacks a validated source location.
 - [ ] Increment `schemaVersion` for incompatible changes.
 
-## 15. Current implementation state (as of 2026-10-20)
+## 15. Current implementation state (as of 2026-10-21)
 
 - `packages/contracts/` **does not exist yet**. This document is the only
   normative source for the v2.0 shape; the checklist in section 14 is still open.
@@ -140,12 +140,14 @@ The data must support a high-level view, hierarchy navigation, and detail drill-
     architecture graph, produced by the deprecated rule-based passes. Retained
     for now; it is not the product's architecture engine.
   - *Index mode* (`python -m analyzer <root> --index`) -> the **deterministic
-    index document** (`schemaVersion: "1.0"` for the *index* format, which is
+    index document** (`schemaVersion: "1.1"` for the *index* format, which is
     distinct from the architecture contract version). It contains `digest`,
     `files`, `endpoints`, `routeBindings`, `models`, `ormRelationships`,
-    `references`, and `diagnostics`. The index document is an *input* to the
-    agent, not a v2.0 analysis result.
+    `references`, `reverseReferences`, `language`, and `diagnostics`. The index
+    document is an *input* to the agent, not a v2.0 analysis result.
 - The index document is fully deterministic (no timestamps), so identical trees
   produce byte-identical JSON.
 - The v2.0 analysis document (what the extension must ultimately produce and
   send to the webview) has **not been produced by any code yet**.
+- Agent tool boundary is specified in `docs/AGENT_TOOLS.md`.
+- Index-to-graph mapping is specified in `docs/INDEX_TO_GRAPH_MAPPING.md`.
