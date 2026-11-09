@@ -83,7 +83,7 @@ The MVP is useful when it can:
 - Render the resulting graph in the existing React Flow UI with evidence, statuses, and node inspection.
 - Show token usage and estimated cost for the run, and actionable errors for failures.
 
-## 10. Current implementation status (as of 2026-10-21)
+## 10. Current implementation status (as of 2026-11-08)
 
 **Completed:**
 - OpenRouter provider layer with typed errors, retries, cost tracking
@@ -93,14 +93,16 @@ The MVP is useful when it can:
   - Explicit language field per file (`"python"`)
   - Reverse reference index (`reverseReferences`)
   - Per-file language field
+- TypeScript `IndexBackend` interface, `PythonIndexBackend` (spawns the sidecar), and `IndexService` (lifecycle, repo overview, unified `index.query` surface)
+- `AgentRunner` with a bounded tool loop (`repo.overview`, `index.query`, `files.read`, `files.search`; findings returned as final JSON, never `confirmed`)
 - Agent tool boundary specification (`docs/AGENT_TOOLS.md`)
 - Index-to-graph mapping specification (`docs/INDEX_TO_GRAPH_MAPPING.md`)
-- All analyzer tests pass (43 tests)
+- All analyzer tests pass (43 tests); extension tests cover provider, index backend/service, and agent runner offline (73 tests defined across 5 files)
 
 **In Progress / Next:**
-- TypeScript `IndexBackend` interface and `IndexService`
+- `FindingValidator` with two-tier validation (translates `AgentFinding` proposals into contract-shaped nodes/edges)
+- `ArchitectureStore` and contract v2.0 document assembly
 - `AnalysisController` and `code-visualizer.analyze` command
 - Privacy disclosure UI
-- `AgentRunner` with bounded tool loop
-- `FindingValidator` with two-tier validation
-- Contract v2.0 document assembly and real rendering path
+- Budget settings, token-budget enforcement, and exclude-pattern enforcement on agent file reads/searches
+- Real rendering path in the webview (types still v1.0; UI still shows the mock fixture)

@@ -183,5 +183,7 @@ should not rely on cross-run ID stability without additional correlation logic.
   routes (module-level handlers only).
 - ORM base detection relies on statically recognizable declarative patterns;
   custom declarative registries may be missed.
-- The process protocol with the extension host (stdin/stdout JSON) is a
-  Milestone 3 concern; the CLI is a standalone entry point for now.
+- The extension host consumes index mode by spawning
+  `python -m analyzer <root> --index` and parsing JSON stdout
+  (`src/analysis/pythonIndexBackend.ts`); the CLI remains a standalone entry
+  point for direct use and tests.

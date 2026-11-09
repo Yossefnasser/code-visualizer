@@ -52,9 +52,11 @@ From the repository root (`code-visualizer/`):
 | Command | Purpose | Observed result |
 | --- | --- | --- |
 | `npm run compile` | type-check -> lint -> webview build -> extension bundle | exit 0 |
-| `npm test` | extension host tests (Mocha via `@vscode/test-cli`) | 12 passing |
-| `python -m unittest discover -s services/analyzer/tests -t services/analyzer` | analyzer/indexer tests | 40 tests, OK |
-| `python -m analyzer <root> --index` | emit the deterministic index document as JSON on stdout | used by the future `IndexService` |
+| `npm test` | extension host tests (Mocha via `@vscode/test-cli`) | 73 tests defined across 5 files (`openRouterProvider`, `pythonIndexBackend`, `indexService`, `agentRunner`, `extension`); 12 passing at the 2026-10-21 checkpoint, full re-run pending test-host download (2026-11-08) |
+| `npm run check-types` | TypeScript type-check only | exit 0 (2026-11-08) |
+| `npm run lint` | ESLint on `src` | exit 0, 0 errors (93 style warnings in the new analysis files, 2026-11-08) |
+| `python -m unittest discover -s services/analyzer/tests -t services/analyzer` | analyzer/indexer tests | 43 tests, OK (re-verified 2026-11-08) |
+| `python -m analyzer <root> --index` | emit the deterministic index document as JSON on stdout | consumed by `PythonIndexBackend` via `IndexService` |
 
 `npm run compile` is the one-shot build used by the F5 pre-launch task, so
 running it before F5 is not necessary -- but it is the fastest way to check that

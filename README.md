@@ -1,71 +1,116 @@
-# code-visualizer README
+# Code Visualizer
 
-This is the README for your extension "code-visualizer". After writing up a brief description, we recommend including the following sections.
+A VS Code extension that helps developers understand the architecture of an
+existing codebase. A deterministic code index supports a single tool-using AI
+agent that explores the repository in bounded steps, identifies architectural
+components and relationships, and the extension renders the findings as an
+interactive, navigable graph (React Flow).
 
-## Features
+> **Status:** Milestone 3 (end-to-end AI analysis proof of concept) is in
+> progress. The provider layer, deterministic index, index service, and agent
+> runner are implemented and tested offline; validation, the v2.0 document
+> assembly, and the analysis command are not yet built. The webview currently
+> renders a clearly labeled mock fixture. See
+> [`docs/MILESTONE_3_STATUS.md`](docs/MILESTONE_3_STATUS.md) for the verified
+> state of the project.
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## How it works
 
-For example if there is an image subfolder under your extension project workspace:
+1. A Python sidecar (`services/analyzer/`) builds a deterministic index of the
+   workspace: files, symbols, imports, resolvable call references (plus reverse
+   references), and high-confidence framework hints (FastAPI routes,
+   SQLAlchemy/Django models). It never executes the analyzed code.
+2. The extension host (`src/analysis/`) spawns the sidecar through the
+   `IndexBackend` interface and exposes it to the agent via `IndexService`.
+3. `AgentRunner` runs a bounded single-agent loop over a `ModelProvider`
+   (OpenRouter is the first implementation, plain HTTP, no SDK) using the
+   tools `repo.overview`, `index.query`, `files.read`, and `files.search`.
+   Findings are returned as structured JSON and can only be `inferred` or
+   `unresolved` -- never `confirmed`.
+4. (Planned) A two-tier validator checks source locations against the index
+   and gates `confirmed` status on deterministic verification of the
+   relationship itself; an architecture store assembles the contract v2.0
+   document for the webview.
 
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+Design documents: [`docs/PRODUCT_SPEC.md`](docs/PRODUCT_SPEC.md),
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+[`docs/ARCHITECTURE_DATA_MODEL.md`](docs/ARCHITECTURE_DATA_MODEL.md),
+[`docs/AGENT_TOOLS.md`](docs/AGENT_TOOLS.md),
+[`docs/INDEX_TO_GRAPH_MAPPING.md`](docs/INDEX_TO_GRAPH_MAPPING.md),
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- VS Code `^1.107.0`
+- Node.js and npm (for building the extension and webview)
+- Python 3.10+ (for the indexer sidecar; developed and tested on 3.12)
+- An OpenRouter API key (for AI analysis; stored only in VS Code
+  SecretStorage)
 
-## Extension Settings
+## Getting started
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+```powershell
+cd code-visualizer
+npm install
+npm run compile        # type-check -> lint -> webview build -> extension bundle
+```
 
-For example:
+Then press **F5** (`Run Extension`) to open the Extension Development Host,
+and run **Code Visualizer: Open Code Visualizer** from the command palette to
+open the webview (currently showing the labeled mock fixture).
+
+To configure the model provider:
+
+1. Run **Code Visualizer: Set OpenRouter API Key** and paste your key from
+   https://openrouter.ai/keys. It is stored in SecretStorage only.
+2. Set the model via `codeVisualizer.openRouter.model`
+   (default `openai/gpt-4o-mini`).
+3. If your model does not support JSON-schema structured output, set
+   `codeVisualizer.openRouter.structuredOutput` to `false`.
+
+## Extension settings
 
 This extension contributes the following settings:
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+- `codeVisualizer.openRouter.model`: OpenRouter model id used for AI analysis
+  (default `openai/gpt-4o-mini`).
+- `codeVisualizer.openRouter.structuredOutput`: request JSON-schema structured
+  output from the model (default `true`).
 
-## Known Issues
+## Commands
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- `code-visualizer.openVisualizer` -- Open Code Visualizer (webview).
+- `code-visualizer.setOpenRouterApiKey` -- Store the OpenRouter API key in
+  SecretStorage.
 
-## Release Notes
+## Privacy
 
-Users appreciate release notes as you update your extension.
+When analysis runs, source excerpts the agent selects are sent to the
+configured model provider (OpenRouter and its upstream model vendors). The
+extension itself sends no telemetry. API keys live only in VS Code
+SecretStorage and are never logged.
 
-### 1.0.0
+## Development
 
-Initial release of ...
+```powershell
+npm run compile        # one-shot build (also the F5 pre-launch task)
+npm run watch          # background watch builds (manual use)
+npm test               # extension host tests (Mocha via @vscode/test-cli)
+python -m unittest discover -s services/analyzer/tests -t services/analyzer
+```
 
-### 1.0.1
+All AI-dependent behavior is testable offline behind a mocked `ModelProvider`;
+tests never call real model APIs. See
+[`docs/DEVELOPMENT_WORKFLOW.md`](docs/DEVELOPMENT_WORKFLOW.md) for the full
+workflow and [`AGENTS.md`](AGENTS.md) for contributor rules.
 
-Fixed issue #.
+## Known issues
 
-### 1.1.0
+- No analysis command yet: the agent pipeline is implemented but not wired to
+  the UI, so the webview still shows the mock fixture.
+- The webview types still describe contract v1.0; v2.0 fields (`origin`,
+  `parentId`, `analysis`, `units`, `summaries`) are not yet typed in the UI.
 
-Added features X, Y, and Z.
+## Release notes
 
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+See [`CHANGELOG.md`](CHANGELOG.md).

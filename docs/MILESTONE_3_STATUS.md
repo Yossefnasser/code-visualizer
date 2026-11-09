@@ -5,7 +5,7 @@ what was verified, and what remains. It is a work log, not a design document:
 the design lives in `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE_DATA_MODEL.md`,
 and `docs/PRODUCT_SPEC.md`.
 
-Last updated: 2026-10-21.
+Last updated: 2026-11-09 (documentation alignment pass: AI-first indexing + Index Contract v1; no source code changed).
 
 ---
 
@@ -15,10 +15,10 @@ Last updated: 2026-10-21.
 | --- | --- | --- |
 | 1 | `ModelProvider` interface + `OpenRouterProvider` (plain HTTP) | **Done** |
 | 2 | Credential + settings UX | **Partial** |
-| 3 | `IndexService` over the Python sidecar | **Partial** (sidecar side done; index v1.1 complete) |
+| 3 | `IndexService` over the Python sidecar | **Done** (sidecar + `IndexBackend`/`PythonIndexBackend`/`IndexService`) |
 | 4 | Agent tool boundary specification | **Done** (`docs/AGENT_TOOLS.md`) |
 | 5 | Index-to-graph mapping specification | **Done** (`docs/INDEX_TO_GRAPH_MAPPING.md`) |
-| 6 | `AgentRunner` + agent tools | Not started |
+| 6 | `AgentRunner` + agent tools | **Done** (bounded loop; `findings.submit` is a final-JSON output, not a tool -- see §2.5) |
 | 7 | `FindingValidator` (two-tier validation) | Not started |
 | 8 | Contract v2.0 document + real rendering path | Not started |
 
@@ -55,12 +55,14 @@ implementation, over plain `fetch` (no SDK, per `AGENTS.md`).
   (`baseUrl` is overridable for tests).
 - Sends `response_format: { type: "json_schema", json_schema: {...} }` only when
   the request carries a schema **and** `structuredOutput` is enabled; otherwise
-  the field is omitted entirely.
+  the field is omitted entirely. When structured output is requested it also
+  sends `provider: { require_parameters: true }` so only endpoints that
+  advertise the feature are used.
 - Bounded per-attempt timeout (default 60 s) via `AbortController`; a timeout is
   reported as `timeout` and retried per policy.
 - Retries transient failures with exponential backoff (base 500 ms, capped at
   8 s). A `Retry-After` header (seconds or HTTP date) overrides the backoff.
-- 401 -> `authentication`, 400 -> `invalid_request`, 429 -> `rate_limit`,
+- 401/403 -> `authentication`, 400 -> `invalid_request`, 429 -> `rate_limit`,
   5xx -> `server`; none of these leak the API key or the full request payload.
 - Parses `usage.prompt_tokens`, `usage.completion_tokens`, `usage.total_tokens`,
   and `usage.cost` (estimated USD). Missing or malformed usage degrades to zeros
@@ -75,7 +77,6 @@ cost mapping, `json_schema` presence/omission, 429 with `Retry-After` then
 success, 401 without retry, 400 surfacing as `invalid_request`, timeout after
 retries, cancellation mapping to `cancelled`, network failure then success,
 missing API key rejection, and malformed JSON retry then `invalid_response`.
-`npm test` reports **12 passing**.
 
 ### 2.2 Credential and settings UX (scope item 2 -- partial)
 
@@ -134,17 +135,102 @@ that supports the agent without interpreting architecture.
 
 **Verified:** 43 analyzer tests pass
 (`python -m unittest discover -s services/analyzer/tests -t services/analyzer`),
-including the updated `services/analyzer/tests/test_indexer.py` with tests for
+including `services/analyzer/tests/test_indexer.py` with tests for
 stable symbol IDs, language field, and reverse references.
 
-**Still missing on the extension side:** the `IndexBackend` TypeScript interface,
-the `IndexService` that spawns the sidecar and translates queries, and the
-agent-facing query surface (`index.query`).
+### 2.4 Extension-side index access (scope item 3 -- done, added 2026-11-08)
 
+**`src/analysis/indexBackend.ts`** -- the `IndexBackend` interface and the
+TypeScript types for the index document (v1.1): `IndexDocument`, `IndexDigest`,
+`FileDoc`, `SymbolRef`, `EndpointHint`, `RouteBinding`, `ModelHint`,
+`OrmRelationshipHint`, `CallReference`, `IndexDiagnostic`, `IndexQueryFilter`,
+`BuildIndexOptions`, plus the typed `IndexBackendError` (`python_not_found`,
+`process_failed`, `timeout`, `invalid_json`, `unsupported_schema_version`,
+`validation_failed`, `cancelled`, `unknown`) and the injectable
+`ProcessExecutor` abstraction.
 
----
+**`src/analysis/pythonIndexBackend.ts`** -- `PythonIndexBackend` implements
+`IndexBackend` by spawning `python -m analyzer <root> --index [--exclude DIR ...]`
+with `PYTHONPATH=services/analyzer/src`:
 
-### 2.4 Agent tool boundary specification (scope item 4 -- done)
+- Parses and validates the JSON stdout (schema version must be `"1.1"`, all
+  required top-level fields present, language must be `"python"`).
+- Caches the parsed document in memory; query methods (`querySymbols`,
+  `queryImports`, `queryReferences`, `queryReverseReferences`, `getEndpoints`,
+  `getRouteBindings`, `getModels`, `getOrmRelationships`, `getFiles`,
+  `getDiagnostics`) filter the cached document deterministically with a default
+  limit of 100.
+- Handles spawn failures (`python_not_found`), non-zero exits
+  (`process_failed`), timeouts (default 5 min), oversized stdout (10 MB cap),
+  and cooperative cancellation via `AbortSignal` (kills the child process).
+- `executor`, `pythonExecutable`, `pythonArgs`, and `timeoutMs` are injectable
+  for offline tests.
+
+**`src/analysis/indexService.ts`** -- `IndexService` wraps an `IndexBackend`
+(received by dependency injection; it does not instantiate backends) and adds:
+
+- Lifecycle: `buildIndex()` / `refreshIndex()` / `hasIndex()`, with
+  `IndexNotBuiltError` thrown by every accessor before the first build.
+- `getRepoOverview()` -- assembles the `repo.overview` payload (schema version,
+  root, language, digest, counts including derived symbol/import totals, and
+  diagnostics).
+- `queryIndex({ type, filter, targetKey })` -- the unified `index.query`
+  surface for all nine query types (`symbols`, `imports`, `references`,
+  `reverseReferences`, `endpoints`, `models`, `routeBindings`,
+  `ormRelationships`, `files`); `reverseReferences` requires `targetKey`.
+- `IndexServiceInterface` -- the minimal surface `AgentRunner` depends on, so
+  tests can fake the service without implementing the whole class.
+
+**Verified:** `src/test/pythonIndexBackend.test.ts` (23 tests: success path,
+cached document, invalid JSON, wrong schema version, missing fields, non-zero
+exit, unknown executor errors, paths with spaces, excludes, cancellation,
+symbol filtering/limit, reverse references, all hint getters, custom
+executable/args/timeout) and `src/test/indexService.test.ts` (27 tests:
+build/overview/digest lifecycle, all nine query types, filtering, limits,
+error propagation, cancellation, excludes).
+
+### 2.5 AgentRunner (scope item 6 -- done, added 2026-11-08)
+
+**`src/analysis/agentRunner.ts`** -- `AgentRunner` runs a bounded single-agent
+loop over a `ModelProvider` and an `IndexServiceInterface`:
+
+- **Tools implemented:** `repo.overview`, `index.query`, `files.read`,
+  `files.search`. `findings.submit` is **not** a tool call: the agent returns
+  findings as a final JSON document matching the `agent_findings` schema
+  (`AgentFinding[]` with `id`, `type` (`node`/`edge`), `proposedType`, `label`,
+  `description`, `source`, `evidence`, `status`, optional `confidence`).
+  Findings can only be `inferred` or `unresolved` -- the runner rejects any
+  finding marked `confirmed` at parse time, since only the (not yet built)
+  validator may promote a relationship.
+- **Loop:** system prompt (with prompt-injection guard: repository content is
+  data, never instructions) -> model call -> parse tool calls or final
+  findings -> execute tools -> append results -> repeat. Structured output
+  (`FINDINGS_SCHEMA`) is forced on the last turn.
+- **Budgets (constructor options, defaults):** `maxTurns` 10, `maxToolCalls` 20,
+  `maxToolOutputChars` 10000 (oversized tool results are replaced with a
+  truncation marker), `totalTimeoutMs` 5 min. Token usage and provider-reported
+  cost are accumulated across turns. Budget/timeout/cancellation/provider
+  failures end the run as `partial` (or `failed`) with diagnostics -- never
+  silent truncation. There is **no per-subsystem loop and no token-budget
+  ceiling** yet; those arrive with the validator/store work.
+- **File access:** `DefaultFileAccess.readFile` validates workspace-relative
+  POSIX paths (rejects absolute paths and `..`/`.` traversal, verifies the
+  resolved path stays inside the workspace) and caps reads at 200 lines.
+  `DefaultSearchAccess.search` shells out to ripgrep (`rg`) with common
+  exclusions and falls back to a Node.js filesystem walk when `rg` is absent.
+  Both are injectable (`FileAccess` / `SearchAccess`) for tests. Exclude
+  patterns from the index are **not** yet enforced on reads/searches.
+- **Result:** `AgentRunResult` with `findings` and `metadata` (`turns`,
+  `toolCalls`, `totalTokens`, `totalCostUSD`, `durationMs`, `status`,
+  `terminationReason`, `diagnostics`).
+
+**Verified:** `src/test/agentRunner.test.ts` (11 tests, all offline against a
+`FakeModelProvider` and fake index/file/search access: basic tool round trip,
+index query, unknown tool, malformed `files.read` args, tool-call limit,
+provider failure, cancellation, malformed final JSON, invalid findings schema,
+`confirmed` rejection, provider-interface compatibility).
+
+### 2.6 Agent tool boundary specification (scope item 4 -- done)
 
 **`docs/AGENT_TOOLS.md`** specifies the five tools available to the AI agent:
 
@@ -156,7 +242,42 @@ agent-facing query surface (`index.query`).
 
 Each tool has defined input/output shapes, constraints, and budget enforcement. The specification includes the tool invocation protocol, error handling, and implementation notes for the extension host.
 
-### 2.5 Index-to-graph mapping specification (scope item 5 -- done)
+**Implementation note (2026-11-08):** `findings.submit` is specified as a tool
+but is implemented as the agent's final JSON output (see §2.5). The
+`AgentFinding` shape is an intermediate proposal format, not the contract v2.0
+node/edge shape; the validator/store step must translate it.
+
+### 2.8 Documentation alignment pass (2026-11-09 -- docs only, no code)
+
+Agreed direction locked in and aligned across `docs/ARCHITECTURE.md`,
+`docs/ARCHITECTURE_DATA_MODEL.md`, `docs/INDEX_TO_GRAPH_MAPPING.md`,
+`docs/AGENT_TOOLS.md`, and `docs/ROADMAP.md`:
+
+- **AI-first indexing:** the AI agent (`AgentRunner`) is the initial Indexer.
+  The Indexer is implementation-independent; a parser is only one possible
+  implementation tool.
+- **Index Contract v1** (upstream, proposed in
+  `docs/ARCHITECTURE_DATA_MODEL.md` section 16): every Indexer (AI,
+  deterministic parser, or hybrid) must produce the same language-neutral
+  representation, distinguishing mechanically observed facts from AI
+  interpretations with evidence, source locations, provenance, and
+  uncertainty. It does not yet exist as a complete machine-readable
+  specification.
+- **Architecture Graph Contract v2.0** (downstream, normative) is produced
+  only by deterministic mapping from the validated index. No LLM calls
+  during graph mapping or rendering.
+- **Validation** is deterministic and two-tiered; validating a source
+  location never proves a semantic relationship.
+- **`AgentFinding` decision:** each proposal maps to one Index Contract v1
+  interpretation entry (see `ARCHITECTURE_DATA_MODEL.md` section 16.4); it
+  is never a v2.0 node/edge directly.
+- **Python sidecar:** transitional/reference backend behind `IndexBackend`
+  (index v1.1). Do not expand its framework-specific rules or remove it yet.
+
+No source code was changed in this pass. Implementation of Index Contract v1
+and the validator/store steps is pending design approval.
+
+### 2.7 Index-to-graph mapping specification (scope item 5 -- done)
 
 **`docs/INDEX_TO_GRAPH_MAPPING.md`** specifies how the deterministic index (v1.1) and validated AI findings map to the architecture graph contract (v2.0). Key mappings:
 
@@ -219,8 +340,19 @@ The background `watch` tasks are untouched and remain available for manual use.
 5. **Cost is parsed, never estimated locally.** `usage.cost` from the provider is
    used when present; the extension does not maintain its own price table (it
    would rot).
-6. **The index document is deterministic.** No timestamps, sorted outputs. This
-   makes runs reproducible and lets the future cache key on content.
+6. **The Python reference index document is deterministic.** No timestamps,
+   sorted outputs. This makes runs reproducible and lets the future cache key
+   on content. (AI-produced Index Contract v1 entries are not byte-deterministic;
+   determinism is required of validation and graph mapping, not of the AI
+   Indexer.)
+7. **The sidecar is spawned, not imported.** `PythonIndexBackend` runs
+   `python -m analyzer --index` as a child process with a typed error taxonomy
+   and an injectable executor, so the extension never depends on Python
+   internals and tests never spawn a real interpreter.
+8. **Findings are final JSON, not a tool call.** The agent's last turn returns
+   the `agent_findings` document; the runner structurally validates it and
+   refuses `confirmed` statuses. This keeps the tool surface at four tools and
+   defers all promotion decisions to the validator.
 
 ---
 
@@ -228,12 +360,15 @@ The background `watch` tasks are untouched and remain available for manual use.
 
 | Gap | Impact | Next step |
 | --- | --- | --- |
-| No analysis command exists yet | The user cannot trigger a run | Add `code-visualizer.analyze` plus `AnalysisController` |
+| No analysis command exists yet | The user cannot trigger a run; `AgentRunner`/`IndexService` are unreachable from the UI | Add `code-visualizer.analyze` plus `AnalysisController` |
+| Index Contract v1 has no machine-readable schema | The AI Indexer's output shape is only a proposal (`ARCHITECTURE_DATA_MODEL.md` §16); validator/store cannot be built against a stable target | Approve the §16 proposal, then add the JSON Schema + examples |
+| `FindingValidator` does not exist | Agent findings are unvalidated proposals; nothing checks source locations or gates `confirmed` | Implement two-tier validation over Index v1 entries per `docs/INDEX_TO_GRAPH_MAPPING.md` §5 |
+| `ArchitectureStore` / v2.0 assembly does not exist | No contract v2.0 document is produced; `AgentFinding` shape is not the contract shape | Deterministically map validated Index v1 to the v2.0 document (no LLM) |
 | `packages/contracts/` does not exist | The v2.0 contract is prose-only; no machine validation | Add the JSON Schema + complete/partial examples |
 | Webview types are still contract **v1.0** (`webview-ui/src/types/architecture.ts`) | v2.0 fields (`origin`, `parentId`, `analysis`, `units`, `summaries`) are not typed in the UI | Update the UI types when the real document is produced |
 | No privacy disclosure UI | Product requirement (AGENTS.md, PRODUCT_SPEC §8) unmet | Show the disclosure before the first analysis |
-| No budget settings or enforcement | Runs can be unbounded in cost | Add token/turn budgets as part of the AgentRunner |
-| `IndexService` does not exist | The sidecar is not yet reachable from the extension | Implement `IndexBackend` + spawn/parse the `--index` output |
+| No budget settings or token-budget enforcement | `AgentRunner` budgets are constructor defaults only; runs can be unbounded in cost | Add token/turn budgets as settings and enforce them in the runner/controller |
+| Exclude patterns not enforced on `files.read`/`files.search` | The agent could read files the index excluded | Check paths against the index/excludes in the file-access layer |
 | The webview currently renders a **fixture** graph (`webview-ui/src/fixtures/mock-architecture.ts`) | The UI has never displayed real analyzer output | Wire the real document through the message bridge |
 | No source navigation from a node | Detail panel is incomplete | Implement validated path resolution + `vscode.window.showTextDocument` |
 
@@ -246,41 +381,50 @@ Commands actually run, with observed results:
 | Command | Result |
 | --- | --- |
 | `npm run compile` | exit 0 -- `check-types` ok, `lint` ok, `vite build` (182 modules, 3.55 s), esbuild `[watch] build finished` |
-| `npm test` | **12 passing** -- 11 `OpenRouterProvider` tests + 1 sample test; exit 0. One earlier run ended with exit code `3221225477` (0xC0000005, access violation) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure. Re-running gives exit 0. |
-| `python -m unittest discover -s services/analyzer/tests -t services/analyzer` | **Ran 43 tests -- OK** (3 new tests for v1.1: symbol IDs, language field, reverse references) |
+| `npm test` | **12 passing** at the 2026-10-21 checkpoint (11 `OpenRouterProvider` tests + 1 sample test); exit 0. One earlier run ended with exit code `3221225477` (0xC0000005, access violation) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure. Re-running gives exit 0. **Note (2026-11-08):** the suite has since grown to 73 tests across 5 files (see §2.4/§2.5); a full `npm test` re-run was in progress (test-host download) when this document was updated. |
+| `npm run check-types` | exit 0 (2026-11-08) |
+| `npm run lint` | exit 0 with 93 warnings, 0 errors (2026-11-08; mostly `curly` style warnings in the new analysis files) |
+| `python -m unittest discover -s services/analyzer/tests -t services/analyzer` | **Ran 43 tests -- OK** (re-verified 2026-11-08) |
 | `python -m analyzer services/analyzer/tests/fixtures/fastapi_app --index` | Valid JSON with keys `digest, files, endpoints, routeBindings, models, ormRelationships, references, reverseReferences, diagnostics, root, schemaVersion, language`; schemaVersion: "1.1"; language: "python"; digest counts: 8 files, 47 lines, 2 endpoints, 2 models, 2 ORM relationships, 4 references, 0 diagnostics; 2 route bindings; symbols have stable IDs; reverseReferences present and sorted |
 | JSON parse check of `.vscode/launch.json` + `.vscode/tasks.json` | exit 0; `preLaunchTask = build` |
 | F5 in the Extension Development Host | Verified manually by the user: the build task runs and the Extension Development Host opens |
 
-Not yet verified (no implementation exists): a real OpenRouter call, the agent
-loop, validation behaviour, and rendering of a real analysis result.
+Not yet verified (no implementation exists): a real OpenRouter call, the
+validator behaviour, and rendering of a real analysis result. The
+`AgentRunner` has only been exercised against mocked providers in tests.
 
 ---
 
 ## 7. Recommended next steps (smallest first)
 
-1. **`IndexBackend` + `IndexService`** -- spawn `python -m analyzer <root> --index`,
-   parse the JSON document (v1.1), expose `getDigest()`, `querySymbols()`,
-   `queryReferences()`, `queryReverseReferences()`, `getEndpoints()`, `getModels()`,
-   `getRouteBindings()`, `getOrmRelationships()`, `getFiles()`. Offline-testable
-   with a fixture index document.
-2. **`AnalysisController` + `code-visualizer.analyze` command** -- manual trigger,
-   status output, cancellation; it composes the provider, index, runner, and
-   validator when those exist.
-3. **Privacy disclosure** before the first analysis (a modal that states which
-   excerpts are sent to the provider).
-4. **`packages/contracts/`** -- machine-readable v2.0 schema plus one complete and
-   one partial example, validated in both Python and TypeScript.
-5. **`AgentRunner`** with `repo.overview`, `index.query`, `files.read`, and
-   `findings.submit`, bounded by turn/token budgets (per `docs/AGENT_TOOLS.md`).
-6. **`FindingValidator`** -- source-location validation against the index; semantic
-   validation only for `routeBindings` and other verifiable facts; everything else
-   stays `inferred` or is dropped with diagnostics (per `docs/INDEX_TO_GRAPH_MAPPING.md`).
+0. **Approve Index Contract v1** (`docs/ARCHITECTURE_DATA_MODEL.md` §16) --
+   resolve the open questions there (entry-type vocabulary, reverse
+   references, partial-unit representation, ID stability), then add the
+   machine-readable schema + examples. This is a prerequisite for steps 1-2.
+1. **`FindingValidator`** -- two-tier validation over Index Contract v1
+   entries: source-location validation; semantic validation only for
+   `routeBindings` and other verifiable facts; everything else stays
+   `inferred` or is dropped with diagnostics (per
+   `docs/INDEX_TO_GRAPH_MAPPING.md`). Includes translating `AgentFinding`
+   proposals into Index v1 interpretation entries.
+2. **`ArchitectureStore` + `packages/contracts/`** -- deterministically map
+   validated Index v1 to the v2.0 document (no LLM); add the machine-readable
+   schema plus one complete and one partial example, validated in both
+   Python and TypeScript.
+3. **`AnalysisController` + `code-visualizer.analyze` command** -- manual
+   trigger, status output, cancellation; composes the provider, index, runner,
+   and validator. Includes the privacy disclosure before the first run.
+4. **Budget settings + exclude enforcement** -- expose `maxTokensPerRun` /
+   `maxTurnsPerSubsystem` / `maxFilesPerTurn` / `maxLinesPerRead` as settings;
+   enforce token budgets in the runner and exclude patterns in
+   `files.read`/`files.search`.
+5. **Webview real rendering path** -- update `webview-ui/src/types/architecture.ts`
+   to v2.0, send the document over the message bridge, render evidence/status/
+   origin, and add source navigation.
 
-7. **Framework hints stay frozen.** The indexer reuses the existing FastAPI and
-   ORM passes; new framework coverage is the agent's job, per `AGENTS.md`.
-8. **The rule-based relationship pass is not run in index mode.** The agent owns
-   relationship interpretation; the index only supplies verifiable facts.
-
-
-
+6. **Framework hints stay frozen.** The Python sidecar is a
+   transitional/reference backend; new framework coverage is the AI Indexer's
+   job, per `AGENTS.md`. Do not expand its rules or remove it yet.
+7. **The rule-based relationship pass is not run in index mode.** The AI
+   Indexer owns relationship interpretation; the reference backend only
+   supplies verifiable facts.

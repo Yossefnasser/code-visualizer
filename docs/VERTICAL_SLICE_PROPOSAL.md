@@ -16,9 +16,9 @@ This document proposes the smallest practical end-to-end implementation that wil
 | Index document (v1.1) | ✅ Done | Python sidecar emits complete index |
 | Agent tool boundary | ✅ Specified | `docs/AGENT_TOOLS.md` |
 | Index-to-graph mapping | ✅ Specified | `docs/INDEX_TO_GRAPH_MAPPING.md` |
-| **IndexBackend + IndexService** | 🔄 **Next** | TypeScript interface + sidecar spawn |
+| **IndexBackend + IndexService** | ✅ Done (2026-11-08) | `indexBackend.ts` + `pythonIndexBackend.ts` + `indexService.ts`; 50 offline tests |
 | **AnalysisController + analyze command** | 🔄 **Next** | Manual trigger, status, cancellation |
-| **AgentRunner** | 🔄 **Next** | Bounded loop with 5 tools |
+| **AgentRunner** | ✅ Done (2026-11-08) | Bounded loop; 4 tools + findings as final JSON (not a `findings.submit` tool call); 11 offline tests |
 | **FindingValidator** | 🔄 **Next** | Two-tier validation |
 | **ArchitectureStore + v2.0 document** | 🔄 **Next** | Merge index + AI findings |
 | **Webview real rendering path** | 🔄 **Next** | Replace mock fixture |

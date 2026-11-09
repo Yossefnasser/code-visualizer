@@ -1,12 +1,22 @@
 # Index-to-Graph Mapping Specification
 
-This document specifies how the deterministic index document (v1.1) and validated AI findings map to the architecture graph contract (v2.0). The mapping preserves clear distinctions between:
+This document specifies how the validated Index Contract v1 and the
+architecture graph contract (v2.0) relate. The mapping is **deterministic**:
+no LLM calls are permitted during graph mapping or rendering. The mapping
+preserves clear distinctions between:
 
-1. **Index entries** — discoverable source structures (files, symbols, imports)
-2. **References** — observed structural connections (calls, imports)
-3. **AI findings** — interpreted architectural relationships
-4. **Validation** — evidence requirements for each status
-5. **Graph mapping** — what appears as nodes and edges in the UI
+1. **Fact entries** — mechanically observed source structures (files, symbols, imports, references)
+2. **Interpretation entries** — AI-identified architectural relationships (from `AgentFinding` proposals)
+3. **Validation** — evidence requirements for each status
+4. **Graph mapping** — what appears as nodes and edges in the UI
+
+**Status note (2026-11-09):** Index Contract v1 is proposed in
+`docs/ARCHITECTURE_DATA_MODEL.md` section 16 and does not yet exist as a
+machine-readable specification. The Python sidecar's index v1.1 is the
+transitional/reference backend output and a migration source, not Index
+Contract v1. The rules below are written against Index Contract v1 entries;
+where they cite Python v1.1 fields (`files[]`, `references[]`, etc.), the
+migration map in `ARCHITECTURE_DATA_MODEL.md` section 16.5 applies.
 
 ---
 
@@ -22,24 +32,24 @@ This document specifies how the deterministic index document (v1.1) and validate
 │  Each has: origin (deterministic/ai/hybrid), status            │
 │         (confirmed/inferred/unresolved), evidence              │
 └─────────────────────────────────────────────────────────────────┘
-                              ▲
-                              │ Mapping & Validation
-                              │
+                               ▲
+                               │ Deterministic mapping (no LLM)
+                               │
 ┌─────────────────────────────────────────────────────────────────┐
-│                      VALIDATED AI FINDINGS                      │
-│  Agent-submitted nodes/edges with evidence                      │
-│  Source-location validated against index                        │
-│  Semantic validation for confirmed relationships                │
+│              VALIDATED INDEX CONTRACT v1 (proposed)             │
+│  Fact entries: files, symbols, imports, references, routes,    │
+│  models, ORM relationships (mechanically observed)              │
+│  Interpretation entries: subsystems, services, relationships   │
+│  (AI-identified, from AgentFinding proposals)                   │
+│  Each entry: evidence, source, provenance, status, uncertainty  │
 └─────────────────────────────────────────────────────────────────┘
-                              ▲
-                              │ Agent submits
-                              │
+                               ▲
+                               │ Deterministic validation (no LLM)
+                               │
 ┌─────────────────────────────────────────────────────────────────┐
-│                    DETERMINISTIC INDEX (v1.1)                   │
-│  Files, symbols, imports, references, reverseReferences        │
-│  Framework hints: endpoints, routeBindings, models,            │
-│  ormRelationships                                               │
-│  Digest for survey                                              │
+│              INDEXER (initial: AI agent / AgentRunner)          │
+│  Produces Index v1 entries: facts + interpretations             │
+│  Reference backend: Python sidecar (index v1.1, transitional)   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -108,13 +118,18 @@ This document specifies how the deterministic index document (v1.1) and validate
 
 **Rule**: ORM relationships are declarative and directly verifiable. They are always `confirmed`.
 
-### 3.3 References → `calls` (Inferred by Default)
+### 3.3 References → `calls` (Fact Confirmed; Architectural Significance Inferred)
 
 | Index Field | Graph Edge |
 |-------------|------------|
-| `references[]` | `source: "function:{sourceModule}:{sourceQualname}"`, `target: "function:{targetModule}:{targetQualname}"`, `type: "calls"`, `status: "inferred"`, `origin: "deterministic"` |
+| `references[]` | `source: "function:{sourceModule}:{sourceQualname}"`, `target: "function:{targetModule}:{targetQualname}"`, `type: "calls"`, `status: "confirmed"` (as an observed + resolved reference fact), `origin: "deterministic"` |
 
-**Rule**: Resolved calls are structural facts, but the **architectural significance** (whether this call represents a meaningful flow) is an interpretation. By default, they are `inferred`. The agent may promote specific calls to `confirmed` if it can verify the relationship semantically (e.g., by reading the source and confirming the call pattern).
+**Rule**: A mechanically observed, successfully resolved reference is a
+`confirmed` fact (see `ARCHITECTURE_DATA_MODEL.md` section 16.4). The
+**architectural significance** (whether this call represents a meaningful
+flow, e.g. endpoint→service delegation) is a separate interpretation entry
+and remains `inferred`. Do not downgrade the observed reference to
+`inferred` merely because its architectural significance is uncertain.
 
 ### 3.4 Imports → `imports` (Hidden by Default)
 
@@ -144,15 +159,19 @@ The agent submits edges with `origin: "ai"` and `status: "inferred"` by default.
 
 ## 5. Validation Rules
 
-### 5.1 Source-Location Validation (All Findings)
+### 5.1 Source-Location Validation (All Entries)
 
-Every finding (node or edge) must cite a `source` location. The validator checks:
+Every entry must cite a `source` location where applicable. The validator checks:
 
-1. The file path exists in `index.files[]`
-2. The symbol exists at or near the cited lines (for symbol-level findings)
-3. For edges: both source and target nodes exist in the combined (index + AI) node set
+1. The file path exists in the index
+2. The symbol exists at or near the cited lines (for symbol-level entries)
+3. For relationships: both source and target entries exist in the combined (fact + interpretation) entry set
 
-**Result**: If validation fails → finding is returned for repair (one round), then dropped with diagnostic.
+The validator sets `metadata.sourceLocationValidated: true|false` on AI
+evidence. `true` means the cited location exists as cited; it does **not**
+mean the AI claim is semantically correct.
+
+**Result**: If validation fails → entry is returned for repair (one round), then dropped with diagnostic.
 
 ### 5.2 Semantic Validation (Confirmed Status Only)
 
@@ -265,7 +284,7 @@ Subsystems are `origin: "ai"` and have `details.responsibility` describing their
 
 | Kind | Source | Validation |
 |------|--------|------------|
-| `ai_observation` | Agent's analysis | `metadata.validated: true` iff source location verified against index |
+| `ai_observation` | Agent's analysis | `metadata.sourceLocationValidated: true` iff source location verified against index. This verifies evidence exists at the cited location; it does **not** verify the semantic correctness of the AI claim |
 
 ### 8.3 Hybrid Evidence
 
@@ -306,13 +325,21 @@ When budgets are exhausted, the analysis produces a partial result with `units`:
 
 ## 10. Implementation Checklist
 
-- [ ] IndexService exposes query methods matching `index.query` tool types
-- [ ] FindingValidator implements two-tier validation
-- [ ] ArchitectureStore merges index nodes + AI findings with deduplication
+- [x] IndexService exposes query methods matching `index.query` tool types (`src/analysis/indexService.ts`, `queryIndex()` for all nine types; `AgentRunner` consumes it via `IndexServiceInterface`)
+- [x] Index Contract v1 machine-readable schema + examples (`packages/contracts/index-v1.schema.json`, `packages/contracts/examples/`, types + validator in `src/analysis/indexContract.ts`; approved design in `docs/ARCHITECTURE_DATA_MODEL.md` section 16)
+- [ ] FindingValidator implements two-tier validation over Index v1 entries
+- [ ] ArchitectureStore deterministically maps validated Index v1 to v2.0 (no LLM)
 - [ ] Graph mapper applies default-view filtering (hide functions, imports, etc.)
 - [ ] UI supports hierarchy navigation via `parentId`
 - [ ] UI shows evidence, status, origin per node/edge
 - [ ] Partial units rendered with appropriate visual indicators
+
+**Note (2026-11-09):** `AgentRunner` (`src/analysis/agentRunner.ts`) produces
+`AgentFinding` proposals (final JSON, `inferred`/`unresolved` only). Decision:
+each proposal maps to one Index Contract v1 interpretation entry (see
+`ARCHITECTURE_DATA_MODEL.md` section 16.4). Validation checks the entry;
+deterministic mapping then produces v2.0 nodes/edges. `AgentFinding` is never
+a v2.0 node/edge directly.
 
 ---
 

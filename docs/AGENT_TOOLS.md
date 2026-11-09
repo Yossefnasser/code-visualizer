@@ -1,6 +1,6 @@
 # Agent Tool Boundary Specification
 
-This document specifies the tools available to the AI agent during architecture analysis. The agent runs in a bounded loop, using these tools to explore the repository through the deterministic index and targeted file reads.
+This document specifies the tools available to the AI agent during architecture analysis. The agent **is** the initial Indexer: it runs in a bounded loop, explores the repository through the Index Contract v1 index and targeted file reads, and produces Index Contract v1 entries (facts + interpretations). The Python sidecar (index v1.1) is a transitional/reference backend that supplies mechanically observed facts and proves the query surface; it is not the primary Indexer. See `docs/ARCHITECTURE_DATA_MODEL.md` section 16 for the Index Contract v1 proposal.
 
 ## Tool Overview
 
@@ -57,7 +57,11 @@ Returns the size-capped repository digest from the index document. This is the a
 
 ## 2. `index.query`
 
-Queries the deterministic index for specific information. The index provides efficient access to symbols, imports, references, and framework hints without reading source files.
+Queries the index for specific information. The index provides efficient access to symbols, imports, references, and framework hints without reading source files.
+
+**Current implementation (transitional backend interface):** the query surface is `IndexService.queryIndex()` over the Python reference backend's index v1.1 document (`src/analysis/indexService.ts`, `src/analysis/pythonIndexBackend.ts`). It is a transitional backend interface, **not** the final language-neutral Index Contract query API. Query types and filters mirror the Python v1.1 shape (nine types: `symbols`, `imports`, `references`, `reverseReferences`, `endpoints`, `models`, `routeBindings`, `ormRelationships`, `files`).
+
+**Proposed future behavior:** a normalized, language-neutral query surface over Index Contract v1 entries, separating agent-facing queries from backend-specific representations. The agent would query entry categories (`file`, `symbol`, `reference`, `route`, `model`, `relationship`, `subsystem`, `service`) with language-neutral filters, and each backend (AI, deterministic parser, hybrid) would translate those queries into its own representation. Backend-specific fields (e.g. Python module names, FastAPI hint shapes) would never leak into the agent-facing API. This surface does not exist yet; see the migration map in `docs/ARCHITECTURE_DATA_MODEL.md` section 16.5.
 
 ### Input
 ```json
@@ -306,82 +310,80 @@ Searches source code for patterns when the index cannot answer (e.g., string lit
 
 ## 5. `findings.submit`
 
-Submits architectural findings (nodes and edges) with evidence. The agent calls this incrementally during exploration.
+### Current implementation (actual behavior)
 
-### Input
+`findings.submit` is **not** an incrementally invoked tool. The agent returns
+findings once, as final JSON, on its last turn. The runner
+(`src/analysis/agentRunner.ts`, `FINDINGS_SCHEMA`) structurally validates the
+document and rejects any finding marked `confirmed`. The actual
+`AgentFinding` structure is:
+
 ```json
 {
-  "nodes": [
+  "findings": [
     {
       "id": "service:app.services.orders:OrderService",
-      "type": "service",
+      "type": "node",
+      "proposedType": "service",
       "label": "Order service",
-      "origin": "ai",
-      "parentId": "subsystem:app.services",
-      "details": {
-        "responsibility": "Creates and fulfills customer orders"
-      },
-      "source": {
-        "path": "app/services/orders.py",
-        "startLine": 20,
-        "endLine": 88
-      },
+      "description": "Creates and fulfills customer orders",
+      "source": { "path": "app/services/orders.py", "startLine": 20, "endLine": 88 },
       "evidence": [
         {
           "kind": "ai_observation",
           "description": "Class holds order placement and fulfillment logic used by checkout endpoints",
-          "source": { "path": "app/services/orders.py", "startLine": 20, "endLine": 88 },
-          "metadata": { "model": "openai/gpt-4o-mini", "validated": false }
+          "source": { "path": "app/services/orders.py", "startLine": 20, "endLine": 88 }
         }
-      ]
-    }
-  ],
-  "edges": [
-    {
-      "id": "calls:service:app.services.orders:OrderService->endpoint:app.api.checkout:POST:/checkout",
-      "source": "service:app.services.orders:OrderService",
-      "target": "endpoint:app.api.checkout:POST:/checkout",
-      "type": "calls",
-      "origin": "ai",
+      ],
       "status": "inferred",
-      "evidence": [
-        {
-          "kind": "ai_observation",
-          "description": "Checkout endpoint calls OrderService.place_order",
-          "source": { "path": "app/api/checkout.py", "startLine": 15, "endLine": 15 },
-          "metadata": { "model": "openai/gpt-4o-mini", "validated": false }
-        }
-      ]
+      "confidence": 0.8
     }
-  ],
-  "diagnostics": []
+  ]
 }
 ```
 
-### Output
+- `type` is `"node"` or `"edge"`; `proposedType` is the proposed component or
+  relationship type (e.g. `service`, `endpoint`, `calls`, `uses_model`).
+- `status` is `"inferred"` or `"unresolved"` only -- never `"confirmed"`.
+- `confidence` is an optional 0-1 estimate of confidence in the AI
+  interpretation (not a calibrated probability; it cannot upgrade an entry
+  to `confirmed`). Omit it when no meaningful estimate exists.
+- Evidence items carry `kind`, `description`, and optional `source`. There
+  is no `metadata.validated` field at proposal time; the validator sets
+  `sourceLocationValidated` (see below).
+
+**Decision (2026-11-09):** each `AgentFinding` maps to one Index Contract v1
+interpretation entry (see `docs/ARCHITECTURE_DATA_MODEL.md` section 16.4) --
+it is not an Architecture Graph Contract v2.0 node/edge directly. Validation
+checks each entry; deterministic mapping then produces v2.0 nodes/edges.
+
+### Proposed future behavior (not implemented)
+
+An incremental `findings.submit` tool call during exploration, returning
+per-submission validation feedback (`accepted` / `rejected` /
+`validationErrors` / `repairRequired`) with one bounded repair round. This
+does not exist yet; do not treat the output shape below as current behavior.
+
 ```json
 {
-  "accepted": [
-    "service:app.services.orders:OrderService"
-  ],
+  "accepted": ["service:app.services.orders:OrderService"],
   "rejected": [],
   "validationErrors": [],
   "repairRequired": false
 }
 ```
 
-### Validation Flow
-1. **Source-location validation** (deterministic): Every cited file, symbol, and line range is checked against the index.
+### Validation Flow (proposed)
+1. **Source-location validation** (deterministic): Every cited file, symbol, and line range is checked against the index. The validator sets `sourceLocationValidated: true/false` on the evidence. This verifies that evidence exists at the cited location; it does **not** verify the semantic correctness of the AI claim.
 2. **Semantic validation** (separate): Relationships that can be deterministically verified (route bindings, ORM declarations, resolved calls) may be upgraded to `confirmed`. AI-only claims remain `inferred`.
 3. **Repair round**: If validation fails, the finding is returned with errors for one bounded repair attempt.
 4. **Final disposition**: Accepted, downgraded (e.g., `confirmed` → `inferred`), or dropped with diagnostics.
 
 ### Notes
-- Node/edge IDs must be unique within the analysis run.
-- `origin` must be `deterministic`, `ai`, or `hybrid`.
-- `status` must be `confirmed`, `inferred`, or `unresolved`.
+- Finding IDs must be unique within the analysis run.
+- `status` must be `inferred` or `unresolved` at proposal time; `confirmed` is assigned only by the validator.
 - Evidence `kind` values: `fastapi_route_decorator`, `function_call`, `sqlalchemy_relationship`, `django_relationship`, `unresolved_reference`, `ai_observation`, etc.
-- For `ai_observation`, `metadata.validated: true` means the cited source location was verified against the index.
+- For `ai_observation`, `metadata.sourceLocationValidated: true` means the cited source location was verified against the index. It does not mean the AI claim is semantically correct.
 
 ---
 
@@ -445,3 +447,25 @@ Budget exhaustion marks the current unit `partial` with diagnostics — never si
 3. **Cancellation**: All tools respect `AbortSignal` for cooperative cancellation.
 4. **Determinism**: Index queries return sorted, deterministic results.
 5. **Testability**: All tools are testable offline with fixture index documents and mocked file systems.
+
+## Implementation Status (2026-11-09)
+
+Implemented in `src/analysis/agentRunner.ts` (`AgentRunner`), backed by
+`src/analysis/indexService.ts` (`IndexService`) and
+`src/analysis/pythonIndexBackend.ts` (`PythonIndexBackend`):
+
+| Tool | Status | Notes |
+| --- | --- | --- |
+| `repo.overview` | Implemented | `IndexService.getRepoOverview()`; throws `IndexNotBuiltError` before the first build |
+| `index.query` | Implemented | `IndexService.queryIndex()` for all nine types; `reverseReferences` requires `targetKey`; default limit 100 |
+| `files.read` | Implemented | `DefaultFileAccess`: workspace-relative POSIX paths only, traversal rejected, 200-line cap. Exclude-pattern enforcement against the index is **not** done yet |
+| `files.search` | Implemented | `DefaultSearchAccess`: ripgrep with a Node.js fallback walk; common exclusions hardcoded. Exclude-pattern enforcement is **not** done yet |
+| `findings.submit` | Implemented as final JSON, not a tool call | The agent's last turn returns an `agent_findings` document (`AgentFinding[]`); the runner validates its structure and rejects `confirmed` statuses. The `AgentFinding` shape is a proposal format, not the contract v2.0 node/edge shape -- translation happens in the (not yet built) validator/store step |
+
+**Budgets actually enforced today** (constructor options on `AgentRunner`):
+`maxTurns` (default 10), `maxToolCalls` (default 20), `maxToolOutputChars`
+(default 10000, oversized results replaced with a truncation marker),
+`totalTimeoutMs` (default 5 min). Token usage and provider-reported cost are
+accumulated and reported in `AgentRunResult.metadata`, but there is **no
+token-budget ceiling** and no per-subsystem loop yet. Budget exhaustion ends
+the run as `partial` with diagnostics.

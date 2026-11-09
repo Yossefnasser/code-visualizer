@@ -2,30 +2,61 @@
 
 ## 1. System overview
 
+**Agreed direction (2026-11-09): AI-first indexing with a language-neutral
+Index Contract v1 and deterministic downstream processing.** The Indexer is
+the subsystem that produces the index; a parser is only one possible
+implementation tool. The initial Indexer implementation is an AI agent. Every
+Indexer implementation (AI, deterministic parser, or hybrid) must produce the
+same Index Contract v1 representation. Validation and graph mapping are
+deterministic; no LLM calls are permitted during graph mapping or rendering.
+
+Two contracts, kept strictly separate:
+
+- **Index Contract v1** (upstream, proposed -- not yet a complete
+  machine-readable specification): the standardized representation every
+  Indexer produces. It distinguishes mechanically observed facts from AI
+  interpretations, each with evidence, source locations, provenance, and
+  uncertainty. Specified in `docs/ARCHITECTURE_DATA_MODEL.md` section 16.
+- **Architecture Graph Contract v2.0** (downstream, normative): the final
+  UI-facing output. Produced only by deterministic mapping from the validated
+  index. Specified in `docs/ARCHITECTURE_DATA_MODEL.md` sections 2-13.
+
 ```text
-VS Code Extension Host (TypeScript)
-  |- command registration / activation; webview lifecycle; message bridge
-  |- AnalysisController        - manual analysis runs, status, cancellation
-  |- IndexService              - file discovery, safe reads, symbol/reference index
-  |    \- IndexBackend (interface)
-  |         \- PythonIndexBackend (first backend; services/analyzer sidecar)
-  |- AgentRunner               - single-agent tool loop
-  |    \- AgentTools: repo.overview, index.query, files.read,
-  |                   files.search, findings.submit
-  |- ModelProvider (interface)
-  |    \- OpenRouterProvider (first implementation)
-  |- FindingValidator          - source-location + semantic validation
-  |- AnalysisCache             - (later milestone) hashed results, partial units
-  \- ArchitectureStore         - assembles the architecture data document
-                 |
-                 | architecture data (contract v2.0 JSON) over the webview bridge
-                 v
+Repository source code
+        |
+        v
+Indexer (initial implementation: AI agent via AgentRunner)
+  |- explores source with tools (repo.overview, index.query, files.read,
+  |  files.search); submits findings as final JSON (AgentFinding proposals)
+  |- produces Index Contract v1 entries: facts + interpretations,
+  |  each with evidence, source locations, provenance, uncertainty
+  |    \- IndexBackend / IndexService expose the index for querying
+  |         \- PythonIndexBackend (transitional/reference backend;
+  |            services/analyzer sidecar, index v1.1 -- frozen rules)
+        |
+        v
+Validation (deterministic, no LLM)
+  |- source-location validation: evidence exists at cited locations
+  |- semantic validation: relationship itself deterministically verifiable
+  |- schema/consistency checks; repair, downgrade, or drop with diagnostics
+        |
+        v
+Deterministic Graph Mapping (no LLM)
+  |- validated Index v1 -> Architecture Graph Contract v2.0
+  |- ArchitectureStore assembles the v2.0 document
+        |
+        | architecture data (contract v2.0 JSON) over the webview bridge
+        v
 React Webview (TypeScript)
   |- React Flow canvas, custom node types and edges
   |- detail/inspector panel with evidence, status, and origin
   |- loading / empty / partial / error states
   \- source-navigation messages to the extension host
 ```
+
+Supporting components (extension host): `AnalysisController` (manual runs,
+status, cancellation), `ModelProvider`/`OpenRouterProvider` (model access),
+`AnalysisCache` (later milestone).
 
 ## 2. Responsibilities
 
@@ -51,7 +82,7 @@ Responsible for:
 
 It must stay provider-agnostic: no OpenRouter or model-provider types.
 
-### Indexer sidecar -- `services/analyzer/` (first IndexBackend)
+### Indexer sidecar -- `services/analyzer/` (transitional/reference backend)
 Responsible for:
 - Discovering candidate Python files with deterministic exclusions.
 - Safe reading/parsing without executing project code.
@@ -59,14 +90,29 @@ Responsible for:
 - Framework hints: FastAPI route decorators and SQLAlchemy/Django model declarations. Hints enrich the index and serve as validation aids; they do not decide what the architecture means.
 - A documented JSON protocol for queries from the extension host.
 
-It must not gain new hand-written framework rules. It is a temporary backend behind the IndexBackend interface; see section 9.
+It must not gain new hand-written framework rules. It remains a
+transitional/reference backend behind the `IndexBackend` interface: it proves
+the query surface and supplies deterministic facts for validation, but it is
+**not** the primary Indexer. The primary (initial) Indexer is the AI agent.
+Do not expand its framework-specific rules or remove it yet; see section 9.
 
 ### Shared contract -- `packages/contracts/`
 Contract v2.0 schema, examples, and validation for both the Python and TypeScript sides. Do not maintain incompatible node/edge shapes per layer.
 
-## 3. AI agent workflow (single agent)
+## 3. AI agent workflow (single agent) -- the AI Indexer
 
-Stage 0 -- Index build (deterministic, no LLM): discovery, parsing, symbol/import/reference index, framework hints, and a size-capped repo digest (pruned directory tree, manifest summaries, hint counts).
+The AI agent **is** the initial Indexer: it explores the repository and
+produces Index Contract v1 entries (facts + interpretations). The
+deterministic Python sidecar is a reference backend that supplies facts and
+proves the query surface; it does not replace the AI Indexer.
+
+Stage 0 -- Index build: the Indexer produces Index Contract v1. The initial
+implementation is the AI agent (bounded exploration below). A deterministic
+reference backend (Python sidecar, index v1.1) may supply mechanically
+observed facts and a size-capped repo digest (pruned directory tree, manifest
+summaries, hint counts) for survey and validation. Every entry records
+whether it is a mechanically observed fact or an AI interpretation, with
+evidence, source locations, provenance, and uncertainty.
 
 Stage 1 -- Survey: the agent receives the digest and proposes subsystems and entry points. The plan is provisional and recorded so partial runs can resume.
 
@@ -74,14 +120,14 @@ Stage 2 -- Per-subsystem exploration loop, bounded by configured budgets:
 1. `index.query` for the subsystem's files, symbols, importers, and importees.
 2. `files.read` targeted line ranges -- never whole directories, never the whole repository.
 3. `files.search` when the index cannot answer a question.
-4. `findings.submit` for components and relationships, each with evidence (path + line range).
+4. `findings.submit` (implemented as final JSON; see `docs/AGENT_TOOLS.md`) for components and relationships, each with evidence (path + line range). Submitted `AgentFinding` proposals become Index Contract v1 interpretation entries after validation -- they are not v2.0 nodes/edges directly.
 5. Follow references across modules through the index instead of reading every file.
 
 Termination: subsystem complete, turn budget exhausted, or token budget exhausted. Budget exhaustion marks the unit `partial` with diagnostics -- never silent truncation.
 
-Stage 3 -- Validation: every finding is checked (section 4). Invalid findings are returned to the agent for one bounded repair round; then they are downgraded or dropped with diagnostics.
+Stage 3 -- Validation (deterministic, no LLM): every index entry is checked (section 4). Invalid entries are returned to the agent for one bounded repair round; then they are downgraded or dropped with diagnostics.
 
-Stage 4 -- Roll-up: merge validated findings, dedupe shared components, assemble the hierarchy, and emit the contract v2.0 document.
+Stage 4 -- Deterministic graph mapping (no LLM): merge validated index entries, dedupe shared components, assemble the hierarchy, and emit the contract v2.0 document. No model calls are permitted in this stage or in rendering.
 
 Stage 5 (later milestone) -- Incremental refresh: re-index changed files, invalidate affected scopes via the reverse-reference graph, and re-run the agent only for those scopes.
 
@@ -100,10 +146,10 @@ Uncertainty is recorded, never smoothed over: unverifiable relationships become 
 
 ## 5. Communication flow
 1. The user triggers analysis manually (the MVP trigger).
-2. AnalysisController validates the workspace root and runs the index build via the IndexBackend.
-3. AgentRunner runs the agent loop with the tools above; findings are submitted incrementally.
-4. FindingValidator checks each finding; repair or downgrade as needed.
-5. ArchitectureStore assembles the architecture document (contract v2.0) and sends it to the webview.
+2. AnalysisController validates the workspace root and starts the Indexer (AI agent). The deterministic reference backend may supply facts/digest for survey and validation.
+3. AgentRunner (the AI Indexer) runs the agent loop with the tools above and produces Index Contract v1 entries; findings are submitted incrementally as `AgentFinding` proposals.
+4. FindingValidator (deterministic) checks each index entry; repair or downgrade as needed. Validating a source location never proves a semantic relationship.
+5. ArchitectureStore deterministically maps the validated index to the architecture document (contract v2.0) and sends it to the webview. No LLM calls in this step.
 6. The webview renders nodes/edges with statuses and origin; the user inspects evidence and opens source locations (paths validated by the host).
 7. Re-running analysis repeats the flow; partial failures surface in status and diagnostics.
 
@@ -118,13 +164,17 @@ code-visualizer/
 |  \- analysis/                     # AI analysis pipeline
 |     |- modelProvider.ts           # provider interface + typed error taxonomy
 |     |- openRouterProvider.ts      # first ModelProvider (plain HTTP)
-|     \- openRouterConfig.ts        # SecretStorage + settings readers
-|     (planned: index service, agent runner, validation, cache, store)
+|     |- openRouterConfig.ts        # SecretStorage + settings readers
+|     |- indexBackend.ts            # IndexBackend interface + Python index v1.1 types (reference backend)
+|     |- pythonIndexBackend.ts      # IndexBackend via the Python sidecar (transitional/reference)
+|     |- indexService.ts            # lifecycle, repo overview, unified index.query
+|     \- agentRunner.ts             # bounded single-agent tool loop (initial AI Indexer)
+|     (planned: Index Contract v1 spec, validation, cache, store, analysis controller)
 |- webview-ui/                      # React + Vite + React Flow UI
 |  \- src/fixtures/                 # mock-architecture.ts (UI-only fixture)
 |- services/
-|  \- analyzer/                     # Python indexer sidecar (first IndexBackend)
-|     \- src/analyzer/indexer.py    # deterministic index document (--index)
+|  \- analyzer/                     # Python indexer sidecar (transitional/reference backend)
+|     \- src/analyzer/indexer.py    # deterministic index document (--index, v1.1)
 |- docs/                            # design docs + MILESTONE_3_STATUS.md
 ```
 
@@ -151,13 +201,15 @@ exists; check the status document.
 - Cost control: token usage is recorded per run and per unit; configurable budget ceilings stop runs with partial status.
 
 ## 8. Architecture principles
-- AI owns architecture interpretation; deterministic utilities support it and never substitute for it.
+- AI owns architecture interpretation and is the initial Indexer; deterministic utilities support it and never substitute for it.
+- The Indexer is implementation-independent: AI, deterministic parser, and hybrid backends must all produce the same Index Contract v1. A parser is only one possible implementation tool.
 - Provider abstraction: the application is not coupled to OpenRouter.
-- Language-neutral agent workflow, data contract, and provider interface; Python is only the first target.
-- Evidence-backed output with two-tier validation and honest uncertainty.
+- Language-neutral agent workflow, index contract, graph contract, and provider interface; Python is only the first target.
+- Evidence-backed output with two-tier validation and honest uncertainty. Validating a source location never proves a semantic relationship.
+- Deterministic graph mapping and rendering: no LLM calls after validation.
 - Bounded exploration; graceful partial results; no silent truncation.
 - Single agent; multi-agent orchestration only if a documented design demonstrates the need.
-- Stable, versioned contract; the UI is independent of model providers and of internal analyzer implementation.
+- Stable, versioned contracts; the UI is independent of model providers and of internal analyzer implementation.
 
 ## 9. Migration notes for `services/analyzer/` (former rule-based engine)
 The rule-based analyzer is no longer the primary architecture engine. Disposition of each component:
@@ -174,32 +226,38 @@ The rule-based analyzer is no longer the primary architecture engine. Dispositio
 | `routes.py` (FastAPI route detection) | Demoted to hint/validator | High-precision deterministic pattern; kept as index hints and a semantic-validation aid. Frozen: do not clone this pattern for new frameworks. |
 | `orm/` adapters (SQLAlchemy, Django) | Demoted to hint/validator | Same rationale; frozen to no new framework adapters. |
 | `relationships.py` | Split | Call-resolution logic folds into the index's reference graph; rule-based relationship semantics (what counts as architecturally meaningful) is removed -- the agent decides. |
-| `analyzer.py` orchestration | Refactored | Becomes the deterministic index pass feeding the agent, not the final graph producer. |
+| `analyzer.py` orchestration | Refactored | Becomes the deterministic reference-backend index pass, not the final graph producer and not the primary Indexer. |
 | Tests asserting service classification or rule-based relationship semantics | Reworked | Mechanical tests stay green; interpretive assertions become hint-provider tests. |
 
-New framework/language support comes from AI interpretation plus, where justified, high-confidence deterministic hints -- not from growing rule code. Removal of deprecated interpretation code is tracked in the roadmap (Milestone 6 decommission step).
+New framework/language support comes from AI interpretation plus, where justified, high-confidence deterministic hints -- not from growing rule code. The sidecar remains a transitional/reference backend: do not expand its framework-specific rules and do not remove it yet. Removal of deprecated interpretation code is tracked in the roadmap (Milestone 6 decommission step), after the AI Indexer demonstrates parity against Index Contract v1.
 
 ## 10. Agent tool boundary
 
 The agent's toolset is specified in `docs/AGENT_TOOLS.md`. The five tools are:
 
 1. `repo.overview` — returns the repository digest for initial survey
-2. `index.query` — queries the deterministic index (symbols, imports, references, hints)
+2. `index.query` — queries the Index Contract v1 index (symbols, imports, references, hints)
 3. `files.read` — reads targeted source line ranges
 4. `files.search` — searches source when the index cannot answer
-5. `findings.submit` — submits structured findings with evidence
+5. `findings.submit` — submits structured findings with evidence (implemented as final JSON; proposals become Index Contract v1 interpretation entries after validation)
 
-The `IndexBackend` interface (implemented by the Python sidecar) provides the query surface for `index.query`. The extension host implements the other tools with privileged file access and budget enforcement.
+The `IndexBackend` interface provides the query surface for `index.query`. The Python sidecar is the transitional/reference implementation; the AI Indexer produces Index Contract v1 entries that the same query surface must expose. The extension host implements the other tools with privileged file access and budget enforcement.
 
 ## 11. Index-to-graph mapping
 
-The mapping from the deterministic index (v1.1) and validated AI findings to the architecture graph contract (v2.0) is specified in `docs/INDEX_TO_GRAPH_MAPPING.md`. Key principles:
+The mapping from the validated Index Contract v1 (facts + interpretations) to the architecture graph contract (v2.0) is specified in `docs/INDEX_TO_GRAPH_MAPPING.md`. Key principles:
 
-- Index entries describe discoverable source structures (files, symbols, imports)
+- Index entries describe discoverable source structures (files, symbols, imports) as mechanically observed facts
 - References describe observed structural connections (calls, imports)
-- AI findings express interpreted architectural relationships
-- Validation determines whether findings satisfy evidence requirements
-- Graph mapping determines which information appears as nodes and edges
+- Interpretation entries express AI-identified architectural relationships, with evidence and uncertainty
+- Validation determines whether entries satisfy evidence requirements; it never upgrades an interpretation to a fact by location-checking alone
+- Graph mapping (deterministic, no LLM) determines which information appears as nodes and edges
 - `confirmed` status requires deterministic verification of the relationship itself
 - AI-only relationships remain `inferred` even when both endpoints exist
 - Default graph shows high-level architecture; drill-down reveals implementation detail
+
+## 12. Index Contract v1 vs Architecture Graph Contract v2.0
+
+- **Index Contract v1** (upstream, proposed): the language-neutral representation every Indexer produces. It holds facts and interpretations side by side, each with `kind` (`fact` | `interpretation`), evidence, source locations, provenance (`deterministic` | `ai` | `hybrid`), and optional `confidence` (0-1 estimate for interpretations). It is **not** yet a complete machine-readable specification; the proposal lives in `docs/ARCHITECTURE_DATA_MODEL.md` section 16. The Python sidecar's index v1.1 is a reference-backend predecessor, not Index Contract v1.
+- **Architecture Graph Contract v2.0** (downstream, normative): the final UI-facing output, produced only by deterministic mapping from the validated index. No LLM calls during mapping or rendering.
+- **`AgentFinding`** (intermediate proposal format, `src/analysis/agentRunner.ts`): the agent's final-JSON output. Decision: each `AgentFinding` maps to one Index Contract v1 interpretation entry (`type: node` -> component entry, `type: edge` -> relationship entry, `proposedType` -> entry kind, `status: inferred|unresolved` preserved, `confidence` -> uncertainty). It is never a v2.0 node/edge directly; validation + deterministic mapping produce those.

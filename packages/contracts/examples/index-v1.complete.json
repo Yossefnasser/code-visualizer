@@ -1,0 +1,183 @@
+{
+  "indexVersion": "1.0",
+  "project": {
+    "root": ".",
+    "languages": [
+      "python"
+    ]
+  },
+  "indexer": {
+    "kind": "ai",
+    "provider": "openrouter",
+    "model": "openai/gpt-4o-mini"
+  },
+  "coverage": {
+    "scopes": [
+      {
+        "id": "scope:app",
+        "scope": "app/",
+        "status": "complete"
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "module:app.api.users",
+      "kind": "fact",
+      "entryType": "module",
+      "label": "app.api.users",
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 1,
+        "endLine": 20
+      },
+      "evidence": [
+        {
+          "kind": "file_observed",
+          "description": "Module observed at app/api/users.py"
+        }
+      ],
+      "provenance": "deterministic",
+      "status": "confirmed"
+    },
+    {
+      "id": "route:endpoint:app.api.users:GET:/users->function:app.api.users:list_users_endpoint",
+      "kind": "fact",
+      "entryType": "route",
+      "label": "GET /users -> list_users_endpoint",
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 9,
+        "endLine": 9
+      },
+      "evidence": [
+        {
+          "kind": "fastapi_route_decorator",
+          "description": "Decorator binds GET /users to list_users_endpoint"
+        }
+      ],
+      "provenance": "deterministic",
+      "status": "confirmed"
+    },
+    {
+      "id": "reference:app.api.users:list_users_endpoint->app.services.user_service:list_users:15",
+      "kind": "fact",
+      "entryType": "reference",
+      "label": "list_users_endpoint calls list_users",
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 15,
+        "endLine": 15
+      },
+      "evidence": [
+        {
+          "kind": "function_call",
+          "description": "Call site observed and resolved to app.services.user_service:list_users"
+        }
+      ],
+      "provenance": "deterministic",
+      "status": "confirmed"
+    },
+    {
+      "id": "subsystem:app.services",
+      "kind": "interpretation",
+      "entryType": "subsystem",
+      "label": "Services",
+      "details": {
+        "responsibility": "Business logic services"
+      },
+      "source": {
+        "path": "app/services/user_service.py",
+        "startLine": 1,
+        "endLine": 40
+      },
+      "evidence": [
+        {
+          "kind": "ai_observation",
+          "description": "Module holds user query logic used by API endpoints",
+          "source": {
+            "path": "app/services/user_service.py",
+            "startLine": 1,
+            "endLine": 40
+          },
+          "metadata": {
+            "model": "openai/gpt-4o-mini",
+            "sourceLocationValidated": true
+          }
+        }
+      ],
+      "provenance": "ai",
+      "status": "inferred",
+      "confidence": 0.8
+    },
+    {
+      "id": "service:app.services.user_service:UserService",
+      "kind": "interpretation",
+      "entryType": "service",
+      "label": "User service",
+      "details": {
+        "responsibility": "User management business logic"
+      },
+      "parentId": "subsystem:app.services",
+      "source": {
+        "path": "app/services/user_service.py",
+        "startLine": 1,
+        "endLine": 40
+      },
+      "evidence": [
+        {
+          "kind": "ai_observation",
+          "description": "Module holds user query logic used by API endpoints",
+          "source": {
+            "path": "app/services/user_service.py",
+            "startLine": 1,
+            "endLine": 40
+          },
+          "metadata": {
+            "model": "openai/gpt-4o-mini",
+            "sourceLocationValidated": true
+          }
+        }
+      ],
+      "provenance": "ai",
+      "status": "inferred",
+      "confidence": 0.8
+    },
+    {
+      "id": "relationship:endpoint:app.api.users:GET:/users->service:app.services.user_service:UserService",
+      "kind": "interpretation",
+      "entryType": "relationship",
+      "label": "GET /users delegates to UserService",
+      "details": {
+        "relationshipType": "calls",
+        "sourceEntryId": "route:endpoint:app.api.users:GET:/users->function:app.api.users:list_users_endpoint",
+        "targetEntryId": "service:app.services.user_service:UserService",
+        "resolutionStatus": "resolved"
+      },
+      "source": {
+        "path": "app/api/users.py",
+        "startLine": 15,
+        "endLine": 15
+      },
+      "evidence": [
+        {
+          "kind": "ai_observation",
+          "description": "Endpoint delegates to service via resolved reference",
+          "source": {
+            "path": "app/api/users.py",
+            "startLine": 15,
+            "endLine": 15
+          },
+          "metadata": {
+            "model": "openai/gpt-4o-mini",
+            "sourceLocationValidated": true
+          }
+        }
+      ],
+      "provenance": "ai",
+      "status": "inferred",
+      "confidence": 0.75
+    }
+  ],
+  "diagnostics": []
+}

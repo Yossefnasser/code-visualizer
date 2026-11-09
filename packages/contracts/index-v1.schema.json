@@ -1,0 +1,376 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-visualizer.local/contracts/index-v1.schema.json",
+  "title": "Architecture Index Contract v1",
+  "description": "Language-neutral index produced by every Indexer (AI, deterministic parser, or hybrid). Distinguishes mechanically observed facts from AI interpretations. Approved design: docs/ARCHITECTURE_DATA_MODEL.md section 16.",
+  "type": "object",
+  "required": [
+    "indexVersion",
+    "project",
+    "indexer",
+    "coverage",
+    "entries",
+    "diagnostics"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "indexVersion": {
+      "const": "1.0"
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "root",
+        "languages"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "indexer": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "ai",
+            "deterministic",
+            "hybrid"
+          ]
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "required": [
+        "scopes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "scope",
+              "status"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "enum": [
+                  "complete",
+                  "partial",
+                  "pending",
+                  "failed"
+                ]
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/diagnostic"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    }
+  },
+  "$defs": {
+    "sourceLocation": {
+      "type": "object",
+      "required": [
+        "path",
+        "startLine"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "kind",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "sourceLocationValidated": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "severity",
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        },
+        "scope": {
+          "type": "string"
+        }
+      }
+    },
+    "relationshipDetails": {
+      "type": "object",
+      "required": [
+        "relationshipType",
+        "sourceEntryId",
+        "targetEntryId",
+        "resolutionStatus"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "relationshipType": {
+          "enum": [
+            "route_handler",
+            "calls",
+            "uses_model",
+            "orm_relationship",
+            "imports",
+            "uses",
+            "reads",
+            "writes"
+          ]
+        },
+        "sourceEntryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetEntryId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolutionStatus": {
+          "enum": [
+            "resolved",
+            "unresolved"
+          ]
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "entryType",
+        "label",
+        "evidence",
+        "provenance",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "interpretation"
+          ]
+        },
+        "entryType": {
+          "enum": [
+            "file",
+            "module",
+            "symbol",
+            "import",
+            "reference",
+            "route",
+            "model",
+            "subsystem",
+            "service",
+            "relationship"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "relationshipType": {
+              "enum": [
+                "route_handler",
+                "calls",
+                "uses_model",
+                "orm_relationship",
+                "imports",
+                "uses",
+                "reads",
+                "writes"
+              ]
+            },
+            "sourceEntryId": {
+              "type": "string"
+            },
+            "targetEntryId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "resolutionStatus": {
+              "enum": [
+                "resolved",
+                "unresolved"
+              ]
+            }
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "provenance": {
+          "enum": [
+            "deterministic",
+            "ai",
+            "hybrid"
+          ]
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "inferred",
+            "unresolved"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "parentId": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "entryType": {
+                "const": "relationship"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "details": {
+                "$ref": "#/$defs/relationshipDetails"
+              }
+            },
+            "required": [
+              "details"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

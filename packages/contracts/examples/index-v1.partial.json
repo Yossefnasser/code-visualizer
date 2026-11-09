@@ -1,0 +1,117 @@
+{
+  "indexVersion": "1.0",
+  "project": {
+    "root": ".",
+    "languages": [
+      "python"
+    ]
+  },
+  "indexer": {
+    "kind": "ai",
+    "provider": "openrouter",
+    "model": "openai/gpt-4o-mini"
+  },
+  "coverage": {
+    "scopes": [
+      {
+        "id": "scope:app.services",
+        "scope": "app/services/",
+        "status": "complete"
+      },
+      {
+        "id": "scope:app.models",
+        "scope": "app/models/",
+        "status": "partial",
+        "diagnostics": [
+          {
+            "severity": "warning",
+            "code": "budget_exhausted",
+            "message": "Token budget reached"
+          }
+        ]
+      },
+      {
+        "id": "scope:app.api",
+        "scope": "app/api/",
+        "status": "pending"
+      },
+      {
+        "id": "scope:legacy",
+        "scope": "legacy/",
+        "status": "failed",
+        "diagnostics": [
+          {
+            "severity": "error",
+            "code": "indexer_error",
+            "message": "Parse failed"
+          }
+        ]
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "service:app.services.user_service:UserService",
+      "kind": "interpretation",
+      "entryType": "service",
+      "label": "User service",
+      "details": {
+        "responsibility": "User management business logic"
+      },
+      "source": {
+        "path": "app/services/user_service.py",
+        "startLine": 1,
+        "endLine": 40
+      },
+      "evidence": [
+        {
+          "kind": "ai_observation",
+          "description": "Module holds user query logic",
+          "source": {
+            "path": "app/services/user_service.py",
+            "startLine": 1,
+            "endLine": 40
+          },
+          "metadata": {
+            "model": "openai/gpt-4o-mini",
+            "sourceLocationValidated": true
+          }
+        }
+      ],
+      "provenance": "ai",
+      "status": "inferred"
+    },
+    {
+      "id": "relationship:service:app.services.user_service:UserService->model:unknown",
+      "kind": "interpretation",
+      "entryType": "relationship",
+      "label": "UserService uses an unresolved model",
+      "details": {
+        "relationshipType": "uses_model",
+        "sourceEntryId": "service:app.services.user_service:UserService",
+        "targetEntryId": null,
+        "resolutionStatus": "unresolved"
+      },
+      "evidence": [
+        {
+          "kind": "ai_observation",
+          "description": "Service references a model that could not be resolved",
+          "metadata": {
+            "model": "openai/gpt-4o-mini",
+            "sourceLocationValidated": false
+          }
+        }
+      ],
+      "provenance": "ai",
+      "status": "unresolved"
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "code": "budget_exhausted",
+      "message": "Token budget reached in app/models/",
+      "scope": "scope:app.models"
+    }
+  ]
+}
