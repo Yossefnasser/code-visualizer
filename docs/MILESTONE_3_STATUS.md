@@ -5,7 +5,8 @@ what was verified, and what remains. It is a work log, not a design document:
 the design lives in `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE_DATA_MODEL.md`,
 and `docs/PRODUCT_SPEC.md`.
 
-Last updated: 2026-11-09 (documentation alignment pass: AI-first indexing + Index Contract v1; no source code changed).
+Last updated: 2026-11-10 (Index Contract v1 implementation, `AgentFinding` adapter,
+and the in-progress `IndexToGraphMapper` documented; test suite re-verified).
 
 ---
 
@@ -20,7 +21,10 @@ Last updated: 2026-11-09 (documentation alignment pass: AI-first indexing + Inde
 | 5 | Index-to-graph mapping specification | **Done** (`docs/INDEX_TO_GRAPH_MAPPING.md`) |
 | 6 | `AgentRunner` + agent tools | **Done** (bounded loop; `findings.submit` is a final-JSON output, not a tool -- see §2.5) |
 | 7 | `FindingValidator` (two-tier validation) | Not started |
-| 8 | Contract v2.0 document + real rendering path | Not started |
+| 8 | Contract v2.0 document + real rendering path | Not started (real analysis path); **Partial** -- prototype rendering of the mapped Index Contract example is wired (§2.11); the upstream machinery is in place (§2.9-§2.10) |
+| 9 | Index Contract v1 machine-readable schema + TS validator | **Done** (2026-11-09, §2.9) |
+| 10 | `AgentFinding` → Index Contract v1 adapter | **Done** (2026-11-09, §2.9) |
+| 11 | `IndexToGraphMapper` (deterministic, no LLM) | **Done** (committed 2026-11-10); wired into the prototype display path (§2.11) |
 
 Legend: **Done** = implemented and verified by a run command; **Partial** = part of the
 item exists; **Not started** = no code yet.
@@ -290,6 +294,108 @@ and the validator/store steps is pending design approval.
 - Evidence propagation: deterministic evidence kinds + ai_observation with validated flag
 - Partial analysis units for budget-exhausted runs
 
+### 2.9 Index Contract v1 and the `AgentFinding` adapter (scope items 3/6 support -- done, added 2026-11-09)
+
+Committed in the Milestone 3 vertical-slice commit (`05fa841`); documented here so the
+status log matches the repository (previous versions of this section listed these as
+open gaps).
+
+**`packages/contracts/`** -- machine-readable contract specifications (now exists):
+
+- `index-v1.schema.json` -- Architecture Index Contract v1 (`indexVersion: "1.0"`);
+  the relationship vocabulary is preserved from `docs/INDEX_TO_GRAPH_MAPPING.md`.
+- `examples/index-v1.complete.json` and `examples/index-v1.partial.json`
+  (the partial example demonstrates pending/failed coverage scopes and an
+  unresolved relationship; both validate against the schema).
+- `README.md` states that these files are canonical and that the
+  Architecture Graph Contract v2.0 schema does not exist yet.
+
+**`src/analysis/indexContract.ts`** -- TS types plus a structural validator without
+external dependencies, including cross-reference checks (every relationship's source
+and target must reference existing entry IDs; duplicate entry IDs are rejected with
+`duplicate id "..."` messages). 20 offline tests in `src/test/indexContract.test.ts`.
+
+**`src/analysis/agentFindingAdapter.ts`** -- translates `AgentFinding[]` proposals
+(one finding -> one Index Contract v1 interpretation entry, per
+`docs/ARCHITECTURE_DATA_MODEL.md` §16.7). Nodes map fully; edges without endpoints
+are excluded with diagnostics (never fabricated); malformed findings are excluded
+with diagnostics. 12 offline tests in `src/test/agentFindingAdapter.test.ts`,
+including an `AgentRunner` integration test.
+
+### 2.10 `IndexToGraphMapper` (scope item 8 -- in progress, added 2026-11-10)
+
+**`src/analysis/indexToGraphMapper.ts`** (currently uncommitted work-in-progress) --
+a deterministic, LLM-free translation from a validated Index Contract v1 document to
+the Graph v2.0 shape consumed by the webview (`MapperResult` with `graph` + `warnings`):
+
+- Validates the input with `validateIndexDocument` first; an invalid document throws
+  with a message that includes the validation errors (e.g. duplicate entry IDs).
+- Entry types `file`/`module` -> `module`, `symbol` -> `function` (or `class` when
+  `details.kind` says so), `route` -> `endpoint`, `model` -> `database_model`,
+  `subsystem` -> `subsystem`, `service` -> `service`.
+- `relationship` entries become edges (`imports`, `calls`, ...) filtered to edges
+  whose both endpoints exist; unresolved relationships produce no edge plus a
+  warning. Import *facts* (`import` entry type) intentionally map to neither node
+  nor edge -- import information reaches the graph as `imports` relationship edges.
+- Provenance maps to graph `origin` (`deterministic`/`ai`/`hybrid`); status, source
+  locations, evidence, diagnostics, and coverage scopes map 1:1.
+
+**Verified:** 16 offline tests in `src/test/indexToGraphMapper.test.ts`. The file
+was committed with a duplicated `indexDoc` declaration in its "duplicate node ids"
+test (broke `tsc`) and a stale expectation in the "unsupported entry types" test
+(an `import` fact entry is never an "unsupported type"); both were corrected on
+2026-11-10. With the corrections, the full suite passes: 124 extension tests
+across 8 files, plus 43 Python analyzer tests (see §6).
+
+**Committed (2026-11-10):** `feat: add deterministic Index v1 to Graph v2.0 mapper`
+(`26a9c0d`).
+
+### 2.11 Prototype display path: Index Contract example → mapper → webview (scope item 8 -- partial, added 2026-11-10)
+
+The first visual prototype now renders real contract data instead of only the
+fixture, without introducing analysis, validation, or new relationship extraction:
+
+- **`src/analysis/exampleGraphProvider.ts`** loads a committed Index Contract v1
+  example (`packages/contracts/examples/index-v1.complete.json` by default;
+  `packages/` is not excluded by `.vscodeignore`, so it ships in the VSIX),
+  validates it with `validateIndexDocument`, and maps it deterministically with
+  `mapIndexToGraph`. Typed `ExampleGraphError` codes (`file_not_found`,
+  `invalid_json`, `invalid_contract`) surface actionable diagnostics. Mapper
+  warnings become `mapper_warning` diagnostics instead of being swallowed.
+  9 offline tests in `src/test/exampleGraphProvider.test.ts`, including that the
+  complete example's only edge is an AI-inferred `calls` relationship.
+- **`src/extension.ts`**: when the webview announces `webviewReady`, the host
+  loads the example graph and posts `{ type: "architectureGraph", graph, source }`
+  (or `analysisError` on failure) to the panel. Everything is traced in the
+  "Code Visualizer" output channel.
+- **Webview message bridge** (`webview-ui/src/App.tsx`): first webview side of a
+  bridge. `acquireVsCodeApi` posts `webviewReady` and listens for the graph
+  message; a memoized guard re-uses one API handle. When opened outside VS Code,
+  the clearly labeled `MOCK_DATA_NOTE` fixture remains the fallback (retained for
+  offline UI development).
+- **Webview contract types** (`webview-ui/src/types/architecture.ts`) upgraded
+  from v1.0 to v2.0: `origin`, `parentId`, `status`, `confidence` on nodes,
+  `origin` on edges, `subsystem` node type, `uses`/`reads`/`writes` edge types,
+  `analysis`/`units`/`summaries` blocks, `project.languages` (legacy singular
+  `language` accepted during transition).
+- **Semantic relationships are suppressed for display**: the webview renders only
+  factual edge types (`route_handler`, `orm_relationship`, `imports`). Edges of
+  semantic types (`calls`, `uses_model`, `uses`, `reads`, `writes`) are counted
+  and announced in the banner ("N semantic relationship(s) suppressed until
+  FindingValidator exists") rather than displayed or silently dropped. For the
+  complete example this means the rendered graph shows endpoint and service
+  nodes and no edges (its only edge is an AI `calls` relationship).
+- **Details panel** (`webview-ui/src/components/panels/details-panel.tsx`):
+  adds Provenance (`origin`, `status`, `confidence`) and Parent (`parentId`) rows
+  so origin is visible per node. Node selection/un/pane-click behavior unchanged.
+
+**Not done yet:** `FindingValidator` (so no AI relationship can be displayed or
+promoted), `AnalysisController` + `code-visualizer.analyze` (no real model call),
+the Graph v2.0 machine-readable schema, and dedicated renderers for
+`module`/`subsystem`/`function`/`class` nodes (they are skipped by the existing
+column layout -- the hierarchy exists in the data and the Details panel, but is
+not drawn yet).
+
 ---
 
 ## 3. Tooling fixes made in this milestone
@@ -361,15 +467,15 @@ The background `watch` tasks are untouched and remain available for manual use.
 | Gap | Impact | Next step |
 | --- | --- | --- |
 | No analysis command exists yet | The user cannot trigger a run; `AgentRunner`/`IndexService` are unreachable from the UI | Add `code-visualizer.analyze` plus `AnalysisController` |
-| Index Contract v1 has no machine-readable schema | The AI Indexer's output shape is only a proposal (`ARCHITECTURE_DATA_MODEL.md` §16); validator/store cannot be built against a stable target | Approve the §16 proposal, then add the JSON Schema + examples |
-| `FindingValidator` does not exist | Agent findings are unvalidated proposals; nothing checks source locations or gates `confirmed` | Implement two-tier validation over Index v1 entries per `docs/INDEX_TO_GRAPH_MAPPING.md` §5 |
+| `FindingValidator` does not exist | Agent findings are unvalidated proposals; nothing checks source locations or gates `confirmed`; the webview therefore suppresses all semantic relationship types (`calls`, `uses_model`, `uses`, `reads`, `writes`) for display (§2.11) | Implement two-tier validation over Index v1 entries per `docs/INDEX_TO_GRAPH_MAPPING.md` §5 |
 | `ArchitectureStore` / v2.0 assembly does not exist | No contract v2.0 document is produced; `AgentFinding` shape is not the contract shape | Deterministically map validated Index v1 to the v2.0 document (no LLM) |
-| `packages/contracts/` does not exist | The v2.0 contract is prose-only; no machine validation | Add the JSON Schema + complete/partial examples |
-| Webview types are still contract **v1.0** (`webview-ui/src/types/architecture.ts`) | v2.0 fields (`origin`, `parentId`, `analysis`, `units`, `summaries`) are not typed in the UI | Update the UI types when the real document is produced |
+| Graph v2.0 contract has no machine-readable schema (`packages/contracts/` covers Index v1 only) | The v2.0 contract is prose-only; no machine validation of the mapper's output | Add the JSON Schema + complete/partial examples |
+| `packages/contracts/` Index-v1 examples do not cover factual/deterministic edge shapes | The prototype renders no edges (the complete example's only relationship is an AI `calls` interpretation) | Extend the examples with `imports`/`route_handler` relationship entries so factual edges are visible in the prototype |
+| `module`/`subsystem`/`function`/`class` nodes have no React Flow renderer | Hierarchy (parentId) exists in data and the Details panel but is not drawn; those node types are skipped by the column layout | Add renderers/layout in a later UI milestone (not the prototype) |
 | No privacy disclosure UI | Product requirement (AGENTS.md, PRODUCT_SPEC §8) unmet | Show the disclosure before the first analysis |
 | No budget settings or token-budget enforcement | `AgentRunner` budgets are constructor defaults only; runs can be unbounded in cost | Add token/turn budgets as settings and enforce them in the runner/controller |
 | Exclude patterns not enforced on `files.read`/`files.search` | The agent could read files the index excluded | Check paths against the index/excludes in the file-access layer |
-| The webview currently renders a **fixture** graph (`webview-ui/src/fixtures/mock-architecture.ts`) | The UI has never displayed real analyzer output | Wire the real document through the message bridge |
+| The webview renders the fixture graph when opened outside VS Code; inside it displays the mapped Index Contract example (§2.11) | The prototype is example-driven, not a real analysis result | Wire `AnalysisController` over the live pipeline; the fixture stays as the offline fallback |
 | No source navigation from a node | Detail panel is incomplete | Implement validated path resolution + `vscode.window.showTextDocument` |
 
 ---
@@ -380,36 +486,43 @@ Commands actually run, with observed results:
 
 | Command | Result |
 | --- | --- |
-| `npm run compile` | exit 0 -- `check-types` ok, `lint` ok, `vite build` (182 modules, 3.55 s), esbuild `[watch] build finished` |
-| `npm test` | **12 passing** at the 2026-10-21 checkpoint (11 `OpenRouterProvider` tests + 1 sample test); exit 0. One earlier run ended with exit code `3221225477` (0xC0000005, access violation) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure. Re-running gives exit 0. **Note (2026-11-08):** the suite has since grown to 73 tests across 5 files (see §2.4/§2.5); a full `npm test` re-run was in progress (test-host download) when this document was updated. |
+| `npm run compile` | exit 0 -- `check-types` ok, `lint` ok, webview build (`tsc -b && vite build`, 182 modules), esbuild `[watch] build finished` |
+| `npm test` | **133 passing, exit 0** (2026-11-10, prototype display path: +9 `exampleGraphProvider` tests; also 2026-11-10: 124 passing after fixing the duplicated `indexDoc` declaration and the stale `import`-entry-type expectation in `src/test/indexToGraphMapper.test.ts`). Earlier runs: 12 passing at the 2026-10-21 checkpoint; suite grew to 73 tests by 2026-11-08. One historical run ended with exit code `3221225477` (0xC0000005) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure; re-running gives exit 0. |
+| Webview build (`npm run build` in `webview-ui`) | exit 0 (2026-11-10): `tsc -b` clean, `vite build` 182 modules transformed |
+| `git commit` mapper | `26a9c0d feat: add deterministic Index v1 to Graph v2.0 mapper` (2 files, 765 insertions) |
 | `npm run check-types` | exit 0 (2026-11-08) |
 | `npm run lint` | exit 0 with 93 warnings, 0 errors (2026-11-08; mostly `curly` style warnings in the new analysis files) |
-| `python -m unittest discover -s services/analyzer/tests -t services/analyzer` | **Ran 43 tests -- OK** (re-verified 2026-11-08) |
+| `python -m unittest discover -s services/analyzer/tests -t services/analyzer` | **Ran 43 tests -- OK** (re-verified 2026-11-10 with exit code 0; also verified 2026-11-08) |
 | `python -m analyzer services/analyzer/tests/fixtures/fastapi_app --index` | Valid JSON with keys `digest, files, endpoints, routeBindings, models, ormRelationships, references, reverseReferences, diagnostics, root, schemaVersion, language`; schemaVersion: "1.1"; language: "python"; digest counts: 8 files, 47 lines, 2 endpoints, 2 models, 2 ORM relationships, 4 references, 0 diagnostics; 2 route bindings; symbols have stable IDs; reverseReferences present and sorted |
 | JSON parse check of `.vscode/launch.json` + `.vscode/tasks.json` | exit 0; `preLaunchTask = build` |
 | F5 in the Extension Development Host | Verified manually by the user: the build task runs and the Extension Development Host opens |
 
 Not yet verified (no implementation exists): a real OpenRouter call, the
-validator behaviour, and rendering of a real analysis result. The
-`AgentRunner` has only been exercised against mocked providers in tests.
+validator behaviour, and rendering of a **real** analysis result. The
+`AgentRunner` has only been exercised against mocked providers in tests; the
+prototype display path renders the committed Index Contract example, not a live
+run (see §2.11 for exactly what is displayed and what is suppressed).
 
 ---
 
 ## 7. Recommended next steps (smallest first)
 
-0. **Approve Index Contract v1** (`docs/ARCHITECTURE_DATA_MODEL.md` §16) --
-   resolve the open questions there (entry-type vocabulary, reverse
-   references, partial-unit representation, ID stability), then add the
-   machine-readable schema + examples. This is a prerequisite for steps 1-2.
+0. ~~**Approve Index Contract v1**~~ -- **Done (2026-11-09):** the machine-readable
+   schema (`packages/contracts/index-v1.schema.json`), TS types + structural
+   validator (`src/analysis/indexContract.ts`), and complete/partial examples now
+   exist with 20 offline tests.
 1. **`FindingValidator`** -- two-tier validation over Index Contract v1
    entries: source-location validation; semantic validation only for
    `routeBindings` and other verifiable facts; everything else stays
    `inferred` or is dropped with diagnostics (per
    `docs/INDEX_TO_GRAPH_MAPPING.md`). Includes translating `AgentFinding`
-   proposals into Index v1 interpretation entries.
-2. **`ArchitectureStore` + `packages/contracts/`** -- deterministically map
-   validated Index v1 to the v2.0 document (no LLM); add the machine-readable
-   schema plus one complete and one partial example, validated in both
+   proposals into Index v1 interpretation entries (the adapter already does
+   the translation; validation is what is missing).
+2. **`ArchitectureStore` + Graph v2.0 contract** -- deterministically map
+   validated Index v1 to the v2.0 document (no LLM); the `IndexToGraphMapper`
+   (§2.10, committed as `26a9c0d`) already implements the pure translation and
+   is wired into the prototype display path (§2.11). Still missing: the
+   machine-readable v2.0 schema and Graph v2.0 examples, validated in both
    Python and TypeScript.
 3. **`AnalysisController` + `code-visualizer.analyze` command** -- manual
    trigger, status output, cancellation; composes the provider, index, runner,

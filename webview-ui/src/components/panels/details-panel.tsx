@@ -44,6 +44,39 @@ export function DetailsPanel({ node }: DetailsPanelProps) {
             <p className="break-all font-mono text-muted-foreground">{node.id}</p>
           </div>
 
+          {node.origin || node.status ? (
+            <div>
+              <p className="mb-1 font-semibold text-foreground">Provenance</p>
+              <dl className="flex flex-col gap-1">
+                {node.origin ? (
+                  <div className="flex flex-col">
+                    <dt className="text-muted-foreground">origin</dt>
+                    <dd className="text-foreground">{node.origin}</dd>
+                  </div>
+                ) : null}
+                {node.status ? (
+                  <div className="flex flex-col">
+                    <dt className="text-muted-foreground">status</dt>
+                    <dd className="text-foreground">{node.status}</dd>
+                  </div>
+                ) : null}
+                {typeof node.confidence === 'number' ? (
+                  <div className="flex flex-col">
+                    <dt className="text-muted-foreground">confidence</dt>
+                    <dd className="text-foreground">{node.confidence}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          ) : null}
+
+          {node.parentId ? (
+            <div>
+              <p className="mb-1 font-semibold text-foreground">Parent</p>
+              <p className="break-all font-mono text-muted-foreground">{node.parentId}</p>
+            </div>
+          ) : null}
+
           {node.details && Object.keys(node.details).length > 0 ? (
             <div>
               <p className="mb-1 font-semibold text-foreground">Details</p>

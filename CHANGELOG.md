@@ -28,12 +28,34 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   loop (`repo.overview`, `index.query`, `files.read`, `files.search`) with
   path-safe file access, ripgrep search with fallback, turn/tool-call/timeout
   budgets, and findings returned as final JSON (`inferred`/`unresolved` only).
+- Index Contract v1: machine-readable JSON Schema
+  (`packages/contracts/index-v1.schema.json`) with complete and partial
+  examples, plus TypeScript types and a structural validator with
+  cross-reference checks (`src/analysis/indexContract.ts`).
+- `AgentFinding` -> Index Contract v1 adapter (`src/analysis/agentFindingAdapter.ts`):
+  one finding maps to one interpretation entry; edge findings without real
+  endpoints are excluded with diagnostics instead of being fabricated.
+- `IndexToGraphMapper` (`src/analysis/indexToGraphMapper.ts`): deterministic,
+  LLM-free translation from a validated Index Contract v1 document to the
+  Graph v2.0 webview shape; validates input first and never drops unsupported
+  entries silently.
+- Prototype display path: `exampleGraphProvider` loads the committed Index
+  Contract example and maps it to Graph v2.0; the extension posts the resulting
+  graph to the webview over a new host↔webview message bridge
+  (`webviewReady` / `architectureGraph`). Outside VS Code the webview keeps
+  rendering the clearly labeled fixture. Semantic relationship types
+  (`calls`, `uses_model`, `uses`, `reads`, `writes`) are suppressed for display
+  until `FindingValidator` exists, and the suppression count is announced in the
+  UI banner. Webview types upgraded to contract v2.0 (`origin`, `parentId`,
+  `status`, `analysis`, `units`); Details panel shows provenance and parent.
 - Design documentation: agent tool boundary (`docs/AGENT_TOOLS.md`),
   index-to-graph mapping (`docs/INDEX_TO_GRAPH_MAPPING.md`), Milestone 3
   status log (`docs/MILESTONE_3_STATUS.md`), and the vertical-slice proposal
   (`docs/VERTICAL_SLICE_PROPOSAL.md`).
-- Offline test suites: 73 extension tests across 5 files (provider, index
-  backend, index service, agent runner, sample) and 43 Python analyzer tests.
+- Offline test suites: 133 extension tests across 9 files (provider, index
+  backend, index service, agent runner, Index Contract, finding adapter,
+  index-to-graph mapper, example graph provider, sample) and 43 Python
+  analyzer tests.
 
 ### Fixed
 
@@ -43,6 +65,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Known limitations
 
 - No `code-visualizer.analyze` command, `FindingValidator`, or
-  `ArchitectureStore` yet; the webview still renders the labeled mock fixture
-  and its types still describe contract v1.0.
+  `ArchitectureStore` yet; the displayed graph is the mapped Index Contract
+  example, not a real analysis run; the fixture remains the offline fallback.
+  Semantic relationship types are not displayed until validation exists.
+- The Architecture Graph Contract v2.0 schema
+  (`packages/contracts/`) does not exist yet; v2.0 is prose-only in
+  `docs/ARCHITECTURE_DATA_MODEL.md` §2-13.
 - No privacy disclosure UI, budget settings, or token-budget enforcement yet.

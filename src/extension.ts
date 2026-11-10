@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import { ExampleGraphError, loadExampleGraph } from './analysis/exampleGraphProvider';
 import { OPENROUTER_API_KEY_SECRET } from './analysis/openRouterConfig';
 
 // The webview UI is a Vite app built into webview-ui/dist. Only the production
@@ -68,6 +69,33 @@ function openVisualizer(context: vscode.ExtensionContext, output: vscode.OutputC
 	try {
 		panel.webview.html = getWebviewHtml(panel.webview, context);
 		output.appendLine('[openVisualizer] Webview panel opened.');
+
+		// Prototype data path: when the webview announces it is ready, send the
+		// Graph v2.0 document mapped from the committed Index Contract example.
+		// The webview falls back to its clearly labeled fixture until then.
+		panel.webview.onDidReceiveMessage((message: { type?: string }) => {
+			if (message?.type !== 'webviewReady') {
+				output.appendLine(`[openVisualizer] Ignoring unknown webview message type: ${String(message?.type)}`);
+				return;
+			}
+			try {
+				const graph = loadExampleGraph(context.extensionPath);
+				output.appendLine(
+					`[openVisualizer] Sending contract graph: ${graph.nodes.length} nodes, ` +
+					`${graph.edges.length} edges, analysis status: ${graph.analysis.status}.`,
+				);
+				void panel.webview.postMessage({
+					type: 'architectureGraph',
+					graph,
+					source: 'packages/contracts/examples/index-v1.complete.json',
+				});
+			} catch (error) {
+				const message = error instanceof ExampleGraphError ? `${error.code}: ${error.message}` : String(error);
+				output.appendLine(`[openVisualizer] Failed to build contract graph: ${message}`);
+				vscode.window.showErrorMessage(`Code Visualizer: ${message}`);
+				void panel.webview.postMessage({ type: 'analysisError', error: message });
+			}
+		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		output.appendLine(`[openVisualizer] Error: ${message}`);
