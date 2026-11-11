@@ -47,6 +47,16 @@ export interface AdapterOptions {
   /** Explicit coverage. The adapter never claims complete coverage without evidence. */
   readonly coverage: { readonly scopes: readonly IndexCoverageScope[] };
   readonly diagnostics?: readonly IndexDiagnostic[];
+  /**
+   * Ids of external deterministic entries (from the index side of the
+   * pipeline) that relationship endpoints may reference. Such references are
+   * resolved when the deterministic facts are merged with the adapted
+   * entries, BEFORE the final structural validation by the caller. The
+   * returned document must therefore not be structurally validated as-is
+   * when this option is used. Without this option the previous strict
+   * guarantee applies (document throws if standalone-invalid).
+   */
+  readonly externalEntryIds?: readonly string[];
 }
 
 export interface AdapterResult {
@@ -189,9 +199,16 @@ export function adaptAgentFindings(
   };
 
   const errors = validateIndexDocument(document);
-  if (errors.length > 0) {
+  const externals = new Set(options.externalEntryIds ?? []);
+  const blockingErrors = errors.filter((error) => {
+    const match = /references missing entry "(.+)"/.exec(error.message);
+    const relationshipEndpoint =
+      error.path.endsWith('.sourceEntryId') || error.path.endsWith('.targetEntryId');
+    return !(relationshipEndpoint && match !== null && externals.has(match[1]));
+  });
+  if (blockingErrors.length > 0) {
     throw new Error(
-      `Adapted Index Contract v1 document is invalid: ${errors.map((e) => `${e.path}: ${e.message}`).join('; ')}`
+      `Adapted Index Contract v1 document is invalid: ${blockingErrors.map((e) => `${e.path}: ${e.message}`).join('; ')}`
     );
   }
 

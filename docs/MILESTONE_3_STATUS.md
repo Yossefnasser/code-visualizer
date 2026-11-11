@@ -20,7 +20,7 @@ and the in-progress `IndexToGraphMapper` documented; test suite re-verified).
 | 4 | Agent tool boundary specification | **Done** (`docs/AGENT_TOOLS.md`) |
 | 5 | Index-to-graph mapping specification | **Done** (`docs/INDEX_TO_GRAPH_MAPPING.md`) |
 | 6 | `AgentRunner` + agent tools | **Done** (bounded loop; `findings.submit` is a final-JSON output, not a tool -- see §2.5) |
-| 7 | `FindingValidator` (two-tier validation) | Not started |
+| 7 | `FindingValidator` (two-tier validation) | **Done** (2026-11-10, §2.12; model-backed repair and pipeline wiring arrive with `AnalysisController`) |
 | 8 | Contract v2.0 document + real rendering path | Not started (real analysis path); **Partial** -- prototype rendering of the mapped Index Contract example is wired (§2.11); the upstream machinery is in place (§2.9-§2.10) |
 | 9 | Index Contract v1 machine-readable schema + TS validator | **Done** (2026-11-09, §2.9) |
 | 10 | `AgentFinding` → Index Contract v1 adapter | **Done** (2026-11-09, §2.9) |
@@ -279,7 +279,10 @@ Agreed direction locked in and aligned across `docs/ARCHITECTURE.md`,
   (index v1.1). Do not expand its framework-specific rules or remove it yet.
 
 No source code was changed in this pass. Implementation of Index Contract v1
-and the validator/store steps is pending design approval.
+and the validator/store steps was pending design approval. Since then: Index
+Contract v1 was approved and implemented (§2.9), the adapter landed (§2.9),
+the mapper was committed (§2.10), the prototype display path is wired (§2.11),
+and the FindingValidator is implemented (§2.12).
 
 ### 2.7 Index-to-graph mapping specification (scope item 5 -- done)
 
@@ -396,6 +399,49 @@ the Graph v2.0 machine-readable schema, and dedicated renderers for
 column layout -- the hierarchy exists in the data and the Details panel, but is
 not drawn yet).
 
+### 2.12 `FindingValidator` (scope item 7 -- done, added 2026-11-10)
+
+**`src/analysis/findingValidator.ts`** -- `validateFindings(document, indexAccess, options?)`
+performs the two-tier validation over Index Contract v1 entries against the
+deterministic index facts (received through `FindingValidatorIndexAccess`,
+structurally satisfied by `IndexServiceInterface.getIndex()`; the whole v1.1
+document is snapshotted, so the sidecar's default query limits do not apply):
+
+- **Tier 1 (source location):** every AI/hybrid entry citing a source must point
+  at a file in the index, and symbol-level entry types (`symbol`, `service`,
+  `route`, `model`, `reference`) additionally require an overlapping symbol
+  span. Every AI evidence record with its own citation gets
+  `metadata.sourceLocationValidated: true|false` (16.6). An unverifiable
+  primary citation drops the entry (diagnostic `source_location_invalid`),
+  optionally after ONE caller-supplied repair round
+  (`FindingValidatorOptions.repair`; re-citations only--no added ids, no status
+  changes). Entries referencing dropped entries cascade-drop with
+  `dangling_reference` diagnostics; the returned document is always
+  structurally valid. Deterministic facts are never dropped; a mismatch
+  produces `fact_location_mismatch` only.
+- **Tier 2 (semantics):** `confirmed` requires deterministic verification of
+  the relationship itself using the documented id schemes and the sidecar's
+  exact id formats (`endpoint:{module}:{METHOD}:{path}`,
+  `function:{module}:{qualname}`, `database_model:{module}:{qualname}`):
+  `route_handler` -> binding match (a finding-form source id that claims a
+  handler must agree with the binding), `orm_relationship` -> declaration
+  match, `calls` -> resolved reference match, `imports` -> import match.
+  Unsupported verification -> `confirmed_not_verifiable` demotion to
+  `inferred`; non-relationship AI `confirmed` interpretations are demoted too
+  (`confirmed_requires_deterministic_verification`). A verifiable `inferred`
+  relationship of a verifiable type is **promoted** to `confirmed`
+  (`relationship_verified`). `unresolved` is never touched.
+- **Integration:** two tests run the real chain findings -> `adaptAgentFindings`
+  -> `validateFindings` -> `mapIndexToGraph` (verified AI service node +
+  promoted `calls` edge appear with `origin: ai`; a ghost citation is dropped
+  and maps to no nodes). Supporting adapter change: `adaptAgentFindings` accepts
+  `externalEntryIds` (deterministic endpoint ids merged later by the caller) --
+  the previous always-throws-on-standalone-invalid behavior otherwise holds.
+
+**Verified:** 22 offline tests in `src/test/findingValidator.test.ts`; full
+suite 161 extension tests passing across 10 files (see §6). Model-backed
+repair and pipeline wiring remain for `AnalysisController`.
+
 ---
 
 ## 3. Tooling fixes made in this milestone
@@ -467,7 +513,7 @@ The background `watch` tasks are untouched and remain available for manual use.
 | Gap | Impact | Next step |
 | --- | --- | --- |
 | No analysis command exists yet | The user cannot trigger a run; `AgentRunner`/`IndexService` are unreachable from the UI | Add `code-visualizer.analyze` plus `AnalysisController` |
-| `FindingValidator` does not exist | Agent findings are unvalidated proposals; nothing checks source locations or gates `confirmed`; the webview therefore suppresses all semantic relationship types (`calls`, `uses_model`, `uses`, `reads`, `writes`) for display (§2.11) | Implement two-tier validation over Index v1 entries per `docs/INDEX_TO_GRAPH_MAPPING.md` §5 |
+| `FindingValidator` exists but is not yet wired into a pipeline; the model-backed repair round-trip is caller-supplied | Agent findings still flow nowhere automatically; suppression of semantic edge types in the webview (§2.11) remains the display guard | Implement two-tier validation over Index v1 entries per composition in `AnalysisController` with the bounded model repair function |
 | `ArchitectureStore` / v2.0 assembly does not exist | No contract v2.0 document is produced; `AgentFinding` shape is not the contract shape | Deterministically map validated Index v1 to the v2.0 document (no LLM) |
 | Graph v2.0 contract has no machine-readable schema (`packages/contracts/` covers Index v1 only) | The v2.0 contract is prose-only; no machine validation of the mapper's output | Add the JSON Schema + complete/partial examples |
 | `packages/contracts/` Index-v1 examples do not cover factual/deterministic edge shapes | The prototype renders no edges (the complete example's only relationship is an AI `calls` interpretation) | Extend the examples with `imports`/`route_handler` relationship entries so factual edges are visible in the prototype |
@@ -487,7 +533,7 @@ Commands actually run, with observed results:
 | Command | Result |
 | --- | --- |
 | `npm run compile` | exit 0 -- `check-types` ok, `lint` ok, webview build (`tsc -b && vite build`, 182 modules), esbuild `[watch] build finished` |
-| `npm test` | **133 passing, exit 0** (2026-11-10, prototype display path: +9 `exampleGraphProvider` tests; also 2026-11-10: 124 passing after fixing the duplicated `indexDoc` declaration and the stale `import`-entry-type expectation in `src/test/indexToGraphMapper.test.ts`). Earlier runs: 12 passing at the 2026-10-21 checkpoint; suite grew to 73 tests by 2026-11-08. One historical run ended with exit code `3221225477` (0xC0000005) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure; re-running gives exit 0. |
+| `npm test` | **161 passing, exit 0** (2026-11-10, FindingValidator done: +22 `findingValidator` tests, 2 of them full-pipeline integration tests). Same day earlier: 124 passing after fixing the duplicated `indexDoc` declaration and the stale `import`-entry-type expectation in `src/test/indexToGraphMapper.test.ts`; 133 passing with the prototype display path. Earlier runs: 12 passing at the 2026-10-21 checkpoint; suite grew to 73 tests by 2026-11-08. One historical run ended with exit code `3221225477` (0xC0000005) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure; re-running gives exit 0. |
 | Webview build (`npm run build` in `webview-ui`) | exit 0 (2026-11-10): `tsc -b` clean, `vite build` 182 modules transformed |
 | `git commit` mapper | `26a9c0d feat: add deterministic Index v1 to Graph v2.0 mapper` (2 files, 765 insertions) |
 | `npm run check-types` | exit 0 (2026-11-08) |
@@ -511,13 +557,11 @@ run (see §2.11 for exactly what is displayed and what is suppressed).
    schema (`packages/contracts/index-v1.schema.json`), TS types + structural
    validator (`src/analysis/indexContract.ts`), and complete/partial examples now
    exist with 20 offline tests.
-1. **`FindingValidator`** -- two-tier validation over Index Contract v1
-   entries: source-location validation; semantic validation only for
-   `routeBindings` and other verifiable facts; everything else stays
-   `inferred` or is dropped with diagnostics (per
-   `docs/INDEX_TO_GRAPH_MAPPING.md`). Includes translating `AgentFinding`
-   proposals into Index v1 interpretation entries (the adapter already does
-   the translation; validation is what is missing).
+1. ~~**`FindingValidator`**~~ -- **Done (2026-11-10, §2.12):** `validateFindings`
+   implements both tiers over Index Contract v1 entries with 22 offline tests
+   (plus adapter support for externally-resolved relationship endpoints).
+   The model-backed repair function and pipeline composition are the
+   `AnalysisController` step.
 2. **`ArchitectureStore` + Graph v2.0 contract** -- deterministically map
    validated Index v1 to the v2.0 document (no LLM); the `IndexToGraphMapper`
    (§2.10, committed as `26a9c0d`) already implements the pure translation and
