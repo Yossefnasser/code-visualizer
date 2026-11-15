@@ -439,7 +439,7 @@ document is snapshotted, so the sidecar's default query limits do not apply):
   the previous always-throws-on-standalone-invalid behavior otherwise holds.
 
 **Verified:** 22 offline tests in `src/test/findingValidator.test.ts`; full
-suite 161 extension tests passing across 10 files (see §6). Model-backed
+suite 173 extension tests passing across 11 files (see §6). Model-backed
 repair and pipeline wiring remain for `AnalysisController`.
 
 ---
@@ -533,7 +533,7 @@ Commands actually run, with observed results:
 | Command | Result |
 | --- | --- |
 | `npm run compile` | exit 0 -- `check-types` ok, `lint` ok, webview build (`tsc -b && vite build`, 182 modules), esbuild `[watch] build finished` |
-| `npm test` | **161 passing, exit 0** (2026-11-10, FindingValidator done: +22 `findingValidator` tests, 2 of them full-pipeline integration tests). Same day earlier: 124 passing after fixing the duplicated `indexDoc` declaration and the stale `import`-entry-type expectation in `src/test/indexToGraphMapper.test.ts`; 133 passing with the prototype display path. Earlier runs: 12 passing at the 2026-10-21 checkpoint; suite grew to 73 tests by 2026-11-08. One historical run ended with exit code `3221225477` (0xC0000005) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure; re-running gives exit 0. |
+| `npm test` | **173 passing, exit 0** (2026-11-15, +12 `providerDiagnostics` tests for `formatProviderDiagnostic`; test script now pins the test host via `--code-version 1.145.2` because `@vscode/test-cli` re-resolves latest stable otherwise and triggered a 384 MB download when stable moved to 1.146.0). Earlier: 161 passing on 2026-11-10 with the FindingValidator (+22 tests, 2 full-pipeline integration tests); 124 passing after fixing the duplicated `indexDoc` declaration and the stale `import`-entry-type expectation in `src/test/indexToGraphMapper.test.ts`; 133 passing with the prototype display path. Earlier runs: 12 passing at the 2026-10-21 checkpoint; suite grew to 73 tests by 2026-11-08. One historical run ended with exit code `3221225477` (0xC0000005) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure; re-running gives exit 0. |
 | Webview build (`npm run build` in `webview-ui`) | exit 0 (2026-11-10): `tsc -b` clean, `vite build` 182 modules transformed |
 | `git commit` mapper | `26a9c0d feat: add deterministic Index v1 to Graph v2.0 mapper` (2 files, 765 insertions) |
 | `npm run check-types` | exit 0 (2026-11-08) |

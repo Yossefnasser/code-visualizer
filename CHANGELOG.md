@@ -39,6 +39,12 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   LLM-free translation from a validated Index Contract v1 document to the
   Graph v2.0 webview shape; validates input first and never drops unsupported
   entries silently.
+- `formatProviderDiagnostic` (`src/analysis/providerDiagnostics.ts`): single
+  source of human-readable provider-error diagnostics — one sentence pattern
+  per `ModelProviderError.kind` (category, action, sanitized provider
+  message), with optional `retryAfterMs`/`status` rendered only when present.
+  Consumed by `AnalysisController` when it lands; not wired into any surface
+  yet.
 - `FindingValidator` (`src/analysis/findingValidator.ts`): two-tier validation
   over Index Contract v1 entries against the deterministic index —
   source-location verification with `metadata.sourceLocationValidated` flags,
@@ -61,7 +67,8 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   index-to-graph mapping (`docs/INDEX_TO_GRAPH_MAPPING.md`), Milestone 3
   status log (`docs/MILESTONE_3_STATUS.md`), and the vertical-slice proposal
   (`docs/VERTICAL_SLICE_PROPOSAL.md`).
-- Offline test suites: 161 extension tests across 10 files (provider, index
+- Offline test suites: 173 extension tests across 11 files (provider, provider
+  diagnostics, index
   backend, index service, agent runner, Index Contract, finding adapter,
   index-to-graph mapper, example graph provider, finding validator, sample)
   and 43 Python analyzer tests.
