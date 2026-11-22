@@ -5,8 +5,8 @@ what was verified, and what remains. It is a work log, not a design document:
 the design lives in `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE_DATA_MODEL.md`,
 and `docs/PRODUCT_SPEC.md`.
 
-Last updated: 2026-11-10 (Index Contract v1 implementation, `AgentFinding` adapter,
-and the in-progress `IndexToGraphMapper` documented; test suite re-verified).
+Last updated: 2026-11-22 (`AnalysisController` core and the deterministic
+fact-entry builder documented in §2.13; full suite re-verified at 186 tests).
 
 ---
 
@@ -20,8 +20,8 @@ and the in-progress `IndexToGraphMapper` documented; test suite re-verified).
 | 4 | Agent tool boundary specification | **Done** (`docs/AGENT_TOOLS.md`) |
 | 5 | Index-to-graph mapping specification | **Done** (`docs/INDEX_TO_GRAPH_MAPPING.md`) |
 | 6 | `AgentRunner` + agent tools | **Done** (bounded loop; `findings.submit` is a final-JSON output, not a tool -- see §2.5) |
-| 7 | `FindingValidator` (two-tier validation) | **Done** (2026-11-10, §2.12; model-backed repair and pipeline wiring arrive with `AnalysisController`) |
-| 8 | Contract v2.0 document + real rendering path | Not started (real analysis path); **Partial** -- prototype rendering of the mapped Index Contract example is wired (§2.11); the upstream machinery is in place (§2.9-§2.10) |
+| 7 | `FindingValidator` (two-tier validation) | **Done** (2026-11-10, §2.12); now composed into the live pipeline by `AnalysisController` (§2.13); model-backed repair still caller-supplied |
+| 8 | Contract v2.0 document + real rendering path | **Partial** -- prototype rendering of the mapped Index Contract example is wired (§2.11); the full offline pipeline (index → agent → adapt → validate → map) now runs in `AnalysisController` (§2.13). Still missing: `code-visualizer.analyze` command, privacy disclosure, webview consumption of a live run |
 | 9 | Index Contract v1 machine-readable schema + TS validator | **Done** (2026-11-09, §2.9) |
 | 10 | `AgentFinding` → Index Contract v1 adapter | **Done** (2026-11-09, §2.9) |
 | 11 | `IndexToGraphMapper` (deterministic, no LLM) | **Done** (committed 2026-11-10); wired into the prototype display path (§2.11) |
@@ -442,6 +442,70 @@ document is snapshotted, so the sidecar's default query limits do not apply):
 suite 173 extension tests passing across 11 files (see §6). Model-backed
 repair and pipeline wiring remain for `AnalysisController`.
 
+### 2.13 `AnalysisController` core + deterministic fact entries (scope items 7/8 -- added 2026-11-22)
+
+Two new modules compose the pipeline that previously existed only as separate,
+tested parts.
+
+**`src/analysis/indexToContractEntries.ts`** -- `toContractEntries(index, options?)`
+turns the deterministic Index v1.1 document into Index Contract v1 **fact**
+entries (`kind: 'fact'`, `provenance: 'deterministic'`, `status: 'confirmed'`),
+per `INDEX_TO_GRAPH_MAPPING.md` §2.1-2.3 (nodes) and §3.1-3.4 (edges):
+
+- modules (`module:{module}`), symbols (sidecar ids, with `details.kind` so the
+  mapper can emit `function` vs `class`), routes (`endpoint:{module}:{METHOD}:{path}`),
+  models (`database_model:{module}:{qualname}`); method symbols get `parentId`
+  to their class entry **only when that class entry exists**.
+- `route_handler` and `orm_relationship` edges are `confirmed` facts; `calls`
+  edges come from resolved references (deduplicated per symbol pair, with the
+  call-site line as `source`); `imports` edges are opt-in
+  (`includeImports`, default `false` because §3.4 hides them in the default view
+  and the mapper has no view filter yet).
+- **Never fabricate an endpoint:** an edge is emitted only when both ends have
+  fact entries in the same document (the Index Contract requires relationship
+  endpoints to resolve and the mapper drops dangling edges). Unresolvable ends
+  produce `fact_edge_skipped_missing_endpoint` diagnostics. This is what keeps
+  the fixture's ORM hint to an unindexed `Post` model from becoming an invalid
+  edge. Duplicate module names and ids are reported
+  (`duplicate_module_name`, `duplicate_fact_id`), never silently overwritten.
+
+**`src/analysis/analysisController.ts`** -- `AnalysisController.run(signal?)`
+composes, in order: `buildIndex` → `runner.run` → `adaptAgentFindings` → merge
+facts + interpretations → `validateFindings` → `mapIndexToGraph`, returning
+`{ graph, document, metadata }`.
+
+- **Dependency injection, no VS Code APIs:** the constructor receives
+  `IndexServiceInterface`, an `AgentRunnerPort` (structurally satisfied by
+  `AgentRunner`), and the workspace root, so the whole pipeline is offline-testable.
+- **Deterministic facts win:** an AI entry whose id collides with a fact id is
+  dropped with a `fact_id_collision` warning instead of invalidating the document.
+- **Honest status, not exceptions, for failed runs:** a provider failure or a
+  budget-exhausted run is not thrown; the agent status becomes the single
+  analysis scope's coverage status, so the graph reports `partial`/`failed`
+  plus diagnostics. `AnalysisError` (with a stable code) is reserved for
+  pipeline failures: `cancelled`, `index_build_failed`, `agent_run_failed`,
+  `adaptation_failed`, `validation_failed`, `mapping_failed`.
+- **Cost/usage recorded per run:** `metadata.agent` carries turns, tool calls,
+  tokens, cost and termination reason; an `analysis_budget` info diagnostic also
+  carries them into the graph, and `metadata.entries` reports fact/adapted/
+  merged/validated/dropped/repaired/demoted/promoted counts.
+- **Cancellation** is threaded into `buildIndex` and `run`; an already-aborted
+  signal fails fast with `cancelled` before indexing.
+
+**Verified:** 13 new offline tests (`src/test/indexToContractEntries.test.ts` 7,
+`src/test/analysisController.test.ts` 6) covering mapping rules, endpoint
+integrity, import opt-in, hierarchy links, verified vs ghost findings,
+deterministic-only graphs, build failure, pre-start cancellation, and
+provider-failure status. Full suite: **186 passing, exit 0** (see §6).
+
+**Known limitation (recorded honestly):** the `AgentFinding` schema
+(`FINDINGS_SCHEMA` in `agentRunner.ts`) has no `sourceEntryId`/`targetEntryId`
+fields and sets `additionalProperties: false`, so real model output cannot yet
+carry edge endpoints; the adapter therefore excludes AI edge findings with
+`unmappable_edge_missing_endpoints`. The controller handles endpoints correctly
+(tested with the extended shape), but enabling real AI edges requires extending
+the findings schema and prompt -- the next slice after the command wiring.
+
 ---
 
 ## 3. Tooling fixes made in this milestone
@@ -512,16 +576,17 @@ The background `watch` tasks are untouched and remain available for manual use.
 
 | Gap | Impact | Next step |
 | --- | --- | --- |
-| No analysis command exists yet | The user cannot trigger a run; `AgentRunner`/`IndexService` are unreachable from the UI | Add `code-visualizer.analyze` plus `AnalysisController` |
-| `FindingValidator` exists but is not yet wired into a pipeline; the model-backed repair round-trip is caller-supplied | Agent findings still flow nowhere automatically; suppression of semantic edge types in the webview (§2.11) remains the display guard | Implement two-tier validation over Index v1 entries per composition in `AnalysisController` with the bounded model repair function |
-| `ArchitectureStore` / v2.0 assembly does not exist | No contract v2.0 document is produced; `AgentFinding` shape is not the contract shape | Deterministically map validated Index v1 to the v2.0 document (no LLM) |
+| No analysis command exists yet | The user cannot trigger a run; the pipeline is composed (`AnalysisController`, §2.13) but unreachable from the UI | Add `code-visualizer.analyze` plus the privacy disclosure |
+| `FindingValidator` is composed but the model-backed repair round-trip is still caller-supplied | Unverifiable citations are dropped without a repair attempt | Supply `FindingValidatorOptions.repair` from the controller (bounded model round-trip) |
+| `ArchitectureStore` / v2.0 assembly | `AnalysisController` now assembles the validated document and maps it to v2.0; nothing persists or caches the result | Decide whether a store is needed at all, or wire the command straight to the webview |
 | Graph v2.0 contract has no machine-readable schema (`packages/contracts/` covers Index v1 only) | The v2.0 contract is prose-only; no machine validation of the mapper's output | Add the JSON Schema + complete/partial examples |
 | `packages/contracts/` Index-v1 examples do not cover factual/deterministic edge shapes | The prototype renders no edges (the complete example's only relationship is an AI `calls` interpretation) | Extend the examples with `imports`/`route_handler` relationship entries so factual edges are visible in the prototype |
 | `module`/`subsystem`/`function`/`class` nodes have no React Flow renderer | Hierarchy (parentId) exists in data and the Details panel but is not drawn; those node types are skipped by the column layout | Add renderers/layout in a later UI milestone (not the prototype) |
 | No privacy disclosure UI | Product requirement (AGENTS.md, PRODUCT_SPEC §8) unmet | Show the disclosure before the first analysis |
 | No budget settings or token-budget enforcement | `AgentRunner` budgets are constructor defaults only; runs can be unbounded in cost | Add token/turn budgets as settings and enforce them in the runner/controller |
 | Exclude patterns not enforced on `files.read`/`files.search` | The agent could read files the index excluded | Check paths against the index/excludes in the file-access layer |
-| The webview renders the fixture graph when opened outside VS Code; inside it displays the mapped Index Contract example (§2.11) | The prototype is example-driven, not a real analysis result | Wire `AnalysisController` over the live pipeline; the fixture stays as the offline fallback |
+| The webview renders the fixture graph when opened outside VS Code; inside it displays the mapped Index Contract example (§2.11) | The prototype is example-driven, not a real analysis result | Wire `code-visualizer.analyze` to `AnalysisController`; the fixture stays as the offline fallback |
+| AI edge findings cannot carry endpoints (`FINDINGS_SCHEMA` has no `sourceEntryId`/`targetEntryId`, `additionalProperties: false`) | Real runs produce AI nodes but no AI edges; the adapter excludes edge findings with `unmappable_edge_missing_endpoints` | Extend the findings schema + system prompt so the agent can cite endpoint ids it saw in the index |
 | No source navigation from a node | Detail panel is incomplete | Implement validated path resolution + `vscode.window.showTextDocument` |
 
 ---
@@ -533,7 +598,7 @@ Commands actually run, with observed results:
 | Command | Result |
 | --- | --- |
 | `npm run compile` | exit 0 -- `check-types` ok, `lint` ok, webview build (`tsc -b && vite build`, 182 modules), esbuild `[watch] build finished` |
-| `npm test` | **173 passing, exit 0** (2026-11-15, +12 `providerDiagnostics` tests for `formatProviderDiagnostic`; test script now pins the test host via `--code-version 1.145.2` because `@vscode/test-cli` re-resolves latest stable otherwise and triggered a 384 MB download when stable moved to 1.146.0). Earlier: 161 passing on 2026-11-10 with the FindingValidator (+22 tests, 2 full-pipeline integration tests); 124 passing after fixing the duplicated `indexDoc` declaration and the stale `import`-entry-type expectation in `src/test/indexToGraphMapper.test.ts`; 133 passing with the prototype display path. Earlier runs: 12 passing at the 2026-10-21 checkpoint; suite grew to 73 tests by 2026-11-08. One historical run ended with exit code `3221225477` (0xC0000005) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure; re-running gives exit 0. |
+| `npm test` | **186 passing, exit 0** (2026-11-22, +13 tests: 7 `indexToContractEntries`, 6 `AnalysisController`; the full pipeline now runs offline end to end). Earlier: **173 passing, exit 0** (2026-11-15, +12 `providerDiagnostics` tests for `formatProviderDiagnostic`; test script now pins the test host via `--code-version 1.145.2` because `@vscode/test-cli` re-resolves latest stable otherwise and triggered a 384 MB download when stable moved to 1.146.0). Earlier: 161 passing on 2026-11-10 with the FindingValidator (+22 tests, 2 full-pipeline integration tests); 124 passing after fixing the duplicated `indexDoc` declaration and the stale `import`-entry-type expectation in `src/test/indexToGraphMapper.test.ts`; 133 passing with the prototype display path. Earlier runs: 12 passing at the 2026-10-21 checkpoint; suite grew to 73 tests by 2026-11-08. One historical run ended with exit code `3221225477` (0xC0000005) *after* reporting "12 passing" -- a flaky VS Code test-host teardown on this machine, not a test failure; re-running gives exit 0. |
 | Webview build (`npm run build` in `webview-ui`) | exit 0 (2026-11-10): `tsc -b` clean, `vite build` 182 modules transformed |
 | `git commit` mapper | `26a9c0d feat: add deterministic Index v1 to Graph v2.0 mapper` (2 files, 765 insertions) |
 | `npm run check-types` | exit 0 (2026-11-08) |
@@ -543,11 +608,13 @@ Commands actually run, with observed results:
 | JSON parse check of `.vscode/launch.json` + `.vscode/tasks.json` | exit 0; `preLaunchTask = build` |
 | F5 in the Extension Development Host | Verified manually by the user: the build task runs and the Extension Development Host opens |
 
-Not yet verified (no implementation exists): a real OpenRouter call, the
-validator behaviour, and rendering of a **real** analysis result. The
+Not yet verified (no implementation exists): a real OpenRouter call and
+rendering of a **real** analysis result through the command/webview path. The
 `AgentRunner` has only been exercised against mocked providers in tests; the
 prototype display path renders the committed Index Contract example, not a live
-run (see §2.11 for exactly what is displayed and what is suppressed).
+run (see §2.11 for exactly what is displayed and what is suppressed). The full
+offline pipeline (index → agent → adapt → validate → map) is now exercised by
+`src/test/analysisController.test.ts` (§2.13).
 
 ---
 
@@ -568,9 +635,12 @@ run (see §2.11 for exactly what is displayed and what is suppressed).
    is wired into the prototype display path (§2.11). Still missing: the
    machine-readable v2.0 schema and Graph v2.0 examples, validated in both
    Python and TypeScript.
-3. **`AnalysisController` + `code-visualizer.analyze` command** -- manual
-   trigger, status output, cancellation; composes the provider, index, runner,
-   and validator. Includes the privacy disclosure before the first run.
+3. **`AnalysisController` + `code-visualizer.analyze` command** -- controller
+   core is **done (2026-11-22, §2.13)**: it composes the provider-agnostic
+   pipeline offline and returns `{ graph, document, metadata }`. Remaining:
+   register `code-visualizer.analyze` in `extension.ts`, progress + cancellation
+   UI, send the live graph to the webview, and the privacy disclosure before the
+   first run.
 4. **Budget settings + exclude enforcement** -- expose `maxTokensPerRun` /
    `maxTurnsPerSubsystem` / `maxFilesPerTurn` / `maxLinesPerRead` as settings;
    enforce token budgets in the runner and exclude patterns in

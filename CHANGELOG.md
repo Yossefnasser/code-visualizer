@@ -43,8 +43,8 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   source of human-readable provider-error diagnostics — one sentence pattern
   per `ModelProviderError.kind` (category, action, sanitized provider
   message), with optional `retryAfterMs`/`status` rendered only when present.
-  Consumed by `AnalysisController` when it lands; not wired into any surface
-  yet.
+  Available to the command layer (`code-visualizer.analyze`) when it lands; not
+  wired into any surface yet.
 - `FindingValidator` (`src/analysis/findingValidator.ts`): two-tier validation
   over Index Contract v1 entries against the deterministic index —
   source-location verification with `metadata.sourceLocationValidated` flags,
@@ -54,6 +54,21 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   else is demoted to `inferred` with diagnostics. Supporting change:
   `adaptAgentFindings` accepts `externalEntryIds` for relationship endpoints
   resolved by later-merged deterministic facts.
+- `toContractEntries` (`src/analysis/indexToContractEntries.ts`): deterministic
+  Index v1.1 → Index Contract v1 **fact** entries per
+  `docs/INDEX_TO_GRAPH_MAPPING.md` §2.1–2.3/§3.1–3.4 — modules, symbols (with
+  class parents), routes, models, and confirmed `route_handler`/
+  `orm_relationship`/`calls` edges; `imports` opt-in. An edge is emitted only
+  when both endpoints have fact entries (unresolvable ends become diagnostics,
+  never dangling or fabricated edges).
+- `AnalysisController` (`src/analysis/analysisController.ts`): composes
+  build index → agent run → adapt findings → merge facts → two-tier validation
+  → Graph v2.0, returning `{ graph, document, metadata }`. Dependency-injected
+  and offline-testable; threads `AbortSignal`; deterministic facts win id
+  collisions; failed/partial agent runs become honest analysis status plus
+  diagnostics (never a fabricated graph or a swallowed error); stable
+  `AnalysisError` codes for pipeline failures; per-run token/cost usage is
+  recorded in metadata and surfaced as an `analysis_budget` diagnostic.
 - Prototype display path: `exampleGraphProvider` loads the committed Index
   Contract example and maps it to Graph v2.0; the extension posts the resulting
   graph to the webview over a new host↔webview message bridge
@@ -67,10 +82,11 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
   index-to-graph mapping (`docs/INDEX_TO_GRAPH_MAPPING.md`), Milestone 3
   status log (`docs/MILESTONE_3_STATUS.md`), and the vertical-slice proposal
   (`docs/VERTICAL_SLICE_PROPOSAL.md`).
-- Offline test suites: 173 extension tests across 11 files (provider, provider
+- Offline test suites: 186 extension tests across 13 files (provider, provider
   diagnostics, index
   backend, index service, agent runner, Index Contract, finding adapter,
-  index-to-graph mapper, example graph provider, finding validator, sample)
+  index-to-graph mapper, index-to-contract entries, analysis controller,
+  example graph provider, finding validator, sample)
   and 43 Python analyzer tests.
 
 ### Fixed
@@ -80,13 +96,18 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ### Known limitations
 
-- No `code-visualizer.analyze` command or `ArchitectureStore` yet, so the
-  validated pipeline is not composed for real runs; the displayed graph is the
-  mapped Index Contract example, not a live analysis. The fixture remains the
-  offline fallback. Semantic relationship types are not displayed until the
-  validator is wired into the live path.
-- The model-backed repair round-trip for the FindingValidator is still caller
-  territory (AnalysisController).
+- No `code-visualizer.analyze` command yet, so the pipeline is composed but not
+  reachable from the UI; the displayed graph is still the mapped Index Contract
+  example, not a live analysis. The fixture remains the offline fallback.
+  Semantic relationship types are suppressed for display until the live path
+  lands.
+- AI edge findings from a real model run are excluded (`unmappable_edge_missing_endpoints`):
+  the `AgentFinding` schema has no endpoint fields and sets
+  `additionalProperties: false`. The controller supports endpoints; the schema
+  and prompt do not emit them yet.
+- The model-backed repair round-trip for the FindingValidator is still
+  unsupplied: `AnalysisController` does not pass a `repair` function yet, so
+  unverifiable citations are dropped without a repair attempt.
 - The Architecture Graph Contract v2.0 schema
   (`packages/contracts/`) does not exist yet; v2.0 is prose-only in
   `docs/ARCHITECTURE_DATA_MODEL.md` §2-13.
